@@ -23,7 +23,7 @@ def _get_nlp(lang):
         return _nlp_en
 
 
-def build_dep_adj(texts, sp, lang="zh", pad_idx=0, max_len=64):
+def build_dep_adj(texts, sp=None, lang="zh", pad_idx=0, max_len=64):
     """
     构建依存树邻接矩阵
     Args:

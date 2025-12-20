@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from data.tokenizer import decode_sp
-from data.dependency import build_dep_adj
 from training.loss import LabelSmoothingLoss
 from training.scheduler import NoamOpt
 from training.validator import run_validation
@@ -59,18 +58,15 @@ class Trainer:
         total_loss = 0
         batch_iterator = tqdm(self.train_loader, desc=f"Epoch {epoch:02d}")
         
-        for src_ids, tgt_ids, adj_src, adj_tgt in batch_iterator:
+        for src_ids, tgt_ids, adj_src, adj_tgt_in in batch_iterator:
             src_ids, tgt_ids = src_ids.to(self.device), tgt_ids.to(self.device)
             tgt_in, tgt_out = tgt_ids[:, :-1], tgt_ids[:, 1:]
 
-            # 构建依存树邻接矩阵
-            src_texts = [decode_sp(self.sp_src, ids.cpu().tolist()) for ids in src_ids]
-            tgt_texts_in = [decode_sp(self.sp_tgt, ids.cpu().tolist()) for ids in tgt_in]
+            # 使用预计算的邻接矩阵，避免运行时重复构建
+            adj_src = adj_src.to(self.device)
+            adj_tgt_in = adj_tgt_in.to(self.device)
 
-            adj_src = build_dep_adj(src_texts, self.sp_src, lang="zh", max_len=src_ids.size(1)).to(self.device)
-            adj_tgt = build_dep_adj(tgt_texts_in, self.sp_tgt, lang="en", max_len=tgt_in.size(1)).to(self.device)
-
-            log_probs = self.model(src_ids, tgt_in, adj_src, adj_tgt)  # [B,T,V]
+            log_probs = self.model(src_ids, tgt_in, adj_src, adj_tgt_in)  # [B,T,V]
             loss = self.criterion(log_probs.reshape(-1, log_probs.size(-1)), tgt_out.reshape(-1))
 
             self.scheduler.zero_grad()

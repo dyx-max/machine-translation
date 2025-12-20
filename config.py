@@ -31,6 +31,15 @@ class Config:
     
     # 设备
     device = "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES") else "cpu"
+
+    # DataLoader 加速
+    dataloader_workers = max(1, (os.cpu_count() or 2) // 2)
+    pin_memory = True
+    persistent_workers = True
+
+    # 预计算/缓存设置
+    cache_root = "cache"
+    precompute_workers = max(1, (os.cpu_count() or 2) - 1)
     
     # 文件路径
     zh_corpus = "zh.txt"
