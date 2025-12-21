@@ -37,9 +37,9 @@ class Config:
     pin_memory = True
     persistent_workers = True
 
-    # 预计算/缓存设置
+    # 预计算/缓存设置（单进程顺序处理）
     cache_root = "cache"
-    precompute_workers = max(1, (os.cpu_count() or 2) - 1)
+    precompute_chunk_size = 3000  # 批处理大小（建议2000-5000，减少进程间通信开销）
     
     # 文件路径
     zh_corpus = "zh.txt"

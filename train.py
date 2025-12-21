@@ -51,19 +51,19 @@ def main():
     sp_src = train_or_load_spm(config.zh_corpus, config.spm_zh_prefix, config.vocab_size)
     sp_tgt = train_or_load_spm(config.en_corpus, config.spm_en_prefix, config.vocab_size)
 
-    # 预计算邻接矩阵缓存（多进程，半精度）
+    # 预计算邻接矩阵缓存（单进程顺序处理，带进度条）
     print("预计算并缓存邻接矩阵...")
     cache_train_dir = os.path.join(config.cache_root, "train")
     cache_valid_dir = os.path.join(config.cache_root, "valid")
     adj_src_train, adj_tgt_in_train = ensure_adj_cache(
         ds_train, src_lang="zh", tgt_lang="en",
         max_src_len=config.max_src_len, max_tgt_in_len=config.max_tgt_len-1,
-        cache_dir=cache_train_dir, num_workers=config.precompute_workers, dtype=torch.float16,
+        cache_dir=cache_train_dir, chunk_size=config.precompute_chunk_size, dtype=torch.float16,
     )
     adj_src_valid, adj_tgt_in_valid = ensure_adj_cache(
         ds_valid, src_lang="zh", tgt_lang="en",
         max_src_len=config.max_src_len, max_tgt_in_len=config.max_tgt_len-1,
-        cache_dir=cache_valid_dir, num_workers=max(1, config.precompute_workers//2), dtype=torch.float16,
+        cache_dir=cache_valid_dir, chunk_size=config.precompute_chunk_size, dtype=torch.float16,
     )
 
     # 创建数据加载器（使用缓存 + DataLoader加速参数）
