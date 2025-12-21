@@ -50,7 +50,8 @@ def compute_adj_sequential(texts, lang: str, max_len: int, chunk_size: int = 300
                       bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'):
         with torch.no_grad():
             # 批量计算，spaCy模型已加载，不会重复加载
-            adj_batch = build_dep_adj(chunk, sp=None, lang=lang, max_len=max_len)  # [B, L, L]
+            # 注意：build_dep_adj 现在使用spaCy自己分词，不再需要sp参数
+            adj_batch = build_dep_adj(chunk, lang=lang, max_len=max_len)  # [B, L, L]
             all_adjs.append(adj_batch.cpu())
     
     # 合并所有批次

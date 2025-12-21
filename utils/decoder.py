@@ -26,8 +26,9 @@ def beam_search_decode(model, src_ids, sp_src, sp_tgt, device, max_len=64, pad_i
     model.eval()
     with torch.no_grad():
         src_ids = src_ids.unsqueeze(0).to(device)     # [1,S]
+        # 注意：build_dep_adj 现在使用spaCy自己分词，不再需要sp参数
         adj_src = build_dep_adj([decode_sp(sp_src, src_ids[0].cpu().tolist())],
-                                sp_src, lang="zh", max_len=src_ids.size(1)).to(device)
+                                lang="zh", max_len=src_ids.size(1)).to(device)
 
         # 构建memory
         src_attn_mask, _, _ = model.build_masks(src_ids, src_ids)
@@ -43,8 +44,9 @@ def beam_search_decode(model, src_ids, sp_src, sp_tgt, device, max_len=64, pad_i
                     new_beams.append((seq, score))
                     continue
 
+                # 注意：build_dep_adj 现在使用spaCy自己分词，不再需要sp参数
                 adj_tgt = build_dep_adj([decode_sp(sp_tgt, seq[0].cpu().tolist())],
-                                        sp_tgt, lang="en", max_len=seq.size(1)).to(device)
+                                        lang="en", max_len=seq.size(1)).to(device)
                 _, tgt_mask, mem_mask = model.build_masks(src_ids, seq)
                 dec_out = model.decode(seq, memory, tgt_mask, mem_mask, adj_tgt)
                 logits = model.generator(dec_out[:, -1:, :])  # [1,1,V]

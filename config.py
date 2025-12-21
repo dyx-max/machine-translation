@@ -19,7 +19,7 @@ class Config:
     dropout = 0.1
     gcn_layers_src = 2
     gcn_layers_tgt = 2
-    fusion_mode = "concat"  # "concat" 或 "gate"
+    fusion_mode = "gate"  # "concat" 或 "gate"
     
     # 训练配置
     batch_size = 32

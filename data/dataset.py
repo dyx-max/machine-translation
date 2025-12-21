@@ -39,8 +39,9 @@ class WMTDataset(Dataset):
             adj_tgt_in = self.adj_tgt_in_cache[idx].to(dtype=torch.float32)
         else:
             # 在线构建（较慢，仅用于无缓存情况）
-            adj_src = build_dep_adj([zh], self.sp_src, lang="zh", max_len=self.max_src_len)[0]
-            adj_tgt_in = build_dep_adj([en], self.sp_tgt, lang="en", max_len=self.max_tgt_len-1)[0]
+            # 注意：build_dep_adj 现在使用spaCy自己分词，不再需要sp参数
+            adj_src = build_dep_adj([zh], lang="zh", max_len=self.max_src_len)[0]
+            adj_tgt_in = build_dep_adj([en], lang="en", max_len=self.max_tgt_len-1)[0]
 
         return src_ids, tgt_ids, adj_src, adj_tgt_in
 
