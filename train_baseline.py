@@ -15,7 +15,6 @@ from config import Config
 from models.transformer_baseline import TransformerBaseline
 from data.tokenizer import train_or_load_spm
 from data.dataset import WMTDataset, collate_batch
-from data.adj_cache import ensure_adj_cache
 from training.trainer import Trainer
 
 
@@ -55,26 +54,14 @@ def main():
     sp_src = train_or_load_spm(config.zh_corpus, config.spm_zh_prefix, config.vocab_size)
     sp_tgt = train_or_load_spm(config.en_corpus, config.spm_en_prefix, config.vocab_size)
 
-    # 预计算邻接矩阵缓存（虽然不使用，但为了兼容接口）
-    print("预计算并缓存邻接矩阵（纯Transformer不使用，但保留以兼容接口）...")
-    cache_train_dir = os.path.join(config.cache_root, "train")
-    cache_valid_dir = os.path.join(config.cache_root, "valid")
-    adj_src_train, adj_tgt_in_train = ensure_adj_cache(
-        ds_train, src_lang="zh", tgt_lang="en",
-        max_src_len=config.max_src_len, max_tgt_in_len=config.max_tgt_len-1,
-        cache_dir=cache_train_dir, chunk_size=config.precompute_chunk_size, dtype=torch.float16,
-    )
-    adj_src_valid, adj_tgt_in_valid = ensure_adj_cache(
-        ds_valid, src_lang="zh", tgt_lang="en",
-        max_src_len=config.max_src_len, max_tgt_in_len=config.max_tgt_len-1,
-        cache_dir=cache_valid_dir, chunk_size=config.precompute_chunk_size, dtype=torch.float16,
-    )
+    # 纯Transformer不需要邻接矩阵，跳过缓存计算以节省时间和存储
+    print("纯Transformer模型不需要邻接矩阵，跳过缓存计算...")
 
-    # 创建数据加载器
+    # 创建数据加载器（skip_adj=True 跳过邻接矩阵计算）
     print("创建数据加载器...")
     train_loader = DataLoader(
         WMTDataset(ds_train, sp_src, sp_tgt, config.max_src_len, config.max_tgt_len,
-                   adj_src_cache=adj_src_train, adj_tgt_in_cache=adj_tgt_in_train),
+                   skip_adj=True),  # 跳过邻接矩阵计算
         batch_size=config.batch_size,
         shuffle=True,
         collate_fn=collate_batch,
@@ -84,7 +71,7 @@ def main():
     )
     valid_loader = DataLoader(
         WMTDataset(ds_valid, sp_src, sp_tgt, config.max_src_len, config.max_tgt_len,
-                   adj_src_cache=adj_src_valid, adj_tgt_in_cache=adj_tgt_in_valid),
+                   skip_adj=True),  # 跳过邻接矩阵计算
         batch_size=1,
         collate_fn=collate_batch,
         num_workers=max(1, config.dataloader_workers//2),
