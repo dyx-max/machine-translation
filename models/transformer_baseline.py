@@ -1,18 +1,16 @@
 """
-主模型：Transformer + GCN
+纯Transformer基线模型（用于对比，禁用GCN）
 """
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from models.transformer import EncoderLayer, DecoderLayer, PositionalEncoding
-from models.gcn import SyntaxGCN
-from models.fusion import ParallelFusion
 from utils.masks import subsequent_mask, make_pad_attn_mask
 
 
-class TransformerGCN(nn.Module):
-    """Transformer + GCN 并行融合模型"""
+class TransformerBaseline(nn.Module):
+    """纯Transformer模型（无GCN）"""
     def __init__(
         self,
         d_model: int,
@@ -24,9 +22,6 @@ class TransformerGCN(nn.Module):
         max_len: int,
         pad_idx: int = 0,
         dropout: float = 0.1,
-        gcn_layers_src: int = 2,
-        gcn_layers_tgt: int = 2,
-        fusion_mode: str = "concat",  # or "gate"
     ):
         super().__init__()
         self.pad_idx = pad_idx
@@ -40,17 +35,11 @@ class TransformerGCN(nn.Module):
         self.encoder = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
         self.decoder = nn.ModuleList([DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
 
-        self.src_syntax_gcn = SyntaxGCN(d_model, num_layers=gcn_layers_src, dropout=dropout)
-        self.tgt_syntax_gcn = SyntaxGCN(d_model, num_layers=gcn_layers_tgt, dropout=dropout)
-
-        self.enc_fusion = ParallelFusion(d_model, mode=fusion_mode, dropout=dropout)
-        self.dec_fusion = ParallelFusion(d_model, mode=fusion_mode, dropout=dropout)
-
         self.generator = nn.Linear(d_model, tgt_vocab_size)
         
         # 初始化权重
         self._init_weights()
-    
+
     def _init_weights(self):
         """初始化模型权重"""
         # Embedding层：normal初始化
@@ -79,51 +68,29 @@ class TransformerGCN(nn.Module):
 
         return src_attn_mask, tgt_attn_mask, memory_attn_mask
 
-    def encode(self, src: torch.Tensor, src_attn_mask: torch.Tensor, adj_src: torch.Tensor):
-        """编码（改进版：GCN使用Transformer第一层输出，统一特征空间）"""
+    def encode(self, src: torch.Tensor, src_attn_mask: torch.Tensor, adj_src: torch.Tensor = None):
+        """编码（adj_src参数保留以兼容接口，但不会使用）"""
         src_emb = self.dropout(self.pos_encoder(self.src_embed(src)))  # [B,S,d_model]
 
-        # Transformer编码
         t_out = src_emb
-        for i, layer in enumerate(self.encoder):
+        for layer in self.encoder:
             t_out = layer(t_out, src_attn_mask)
-            # 让GCN使用Transformer第一层的输出，而不是初始embedding
-            # 这样GCN和Transformer的特征空间更匹配
-            if i == 0:
-                transformer_first_out = t_out
 
-        # GCN处理（使用Transformer第一层输出，而不是初始embedding）
-        adj_src = adj_src.to(src.device)
-        # 使用Transformer第一层输出作为GCN输入，添加残差连接确保信息流
-        g_out = self.src_syntax_gcn(transformer_first_out, adj_src)  # [B,S,d_model]
-        
-        # 融合：Transformer深层输出 + GCN输出（基于Transformer第一层）
-        enc_out = self.enc_fusion(t_out, g_out)
-        return enc_out
+        return t_out
 
     def decode(self, tgt: torch.Tensor, memory: torch.Tensor, tgt_attn_mask: torch.Tensor,
-               memory_attn_mask: torch.Tensor, adj_tgt: torch.Tensor):
-        """解码（改进版：GCN使用Transformer第一层输出，统一特征空间）"""
+               memory_attn_mask: torch.Tensor, adj_tgt: torch.Tensor = None):
+        """解码（adj_tgt参数保留以兼容接口，但不会使用）"""
         tgt_emb = self.dropout(self.pos_encoder(self.tgt_embed(tgt)))  # [B,T,d_model]
 
-        # Transformer解码
         t_out = tgt_emb
-        for i, layer in enumerate(self.decoder):
+        for layer in self.decoder:
             t_out = layer(t_out, memory, tgt_attn_mask, memory_attn_mask)
-            # 让GCN使用Transformer第一层的输出
-            if i == 0:
-                transformer_first_out = t_out
 
-        # GCN处理（使用Transformer第一层输出）
-        adj_tgt = adj_tgt.to(tgt.device)
-        g_out = self.tgt_syntax_gcn(transformer_first_out, adj_tgt)  # [B,T,d_model]
+        return t_out
 
-        # 融合：Transformer深层输出 + GCN输出（基于Transformer第一层）
-        dec_out = self.dec_fusion(t_out, g_out)
-        return dec_out
-
-    def forward(self, src: torch.Tensor, tgt: torch.Tensor, adj_src: torch.Tensor, adj_tgt: torch.Tensor):
-        """前向传播"""
+    def forward(self, src: torch.Tensor, tgt: torch.Tensor, adj_src: torch.Tensor = None, adj_tgt: torch.Tensor = None):
+        """前向传播（adj参数保留以兼容接口，但不会使用）"""
         src_attn_mask, tgt_attn_mask, memory_attn_mask = self.build_masks(src, tgt)
         memory = self.encode(src, src_attn_mask, adj_src)
         dec_out = self.decode(tgt, memory, tgt_attn_mask, memory_attn_mask, adj_tgt)

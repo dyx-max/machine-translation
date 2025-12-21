@@ -81,7 +81,7 @@ class Trainer:
         print(f"Epoch {epoch} average loss: {avg_loss:.4f}")
         return avg_loss
 
-    def validate(self, epoch):
+    def validate(self, epoch, debug=False):
         """验证"""
         run_validation(
             self.model, 
@@ -91,7 +91,8 @@ class Trainer:
             self.device, 
             max_len=self.config['max_tgt_len'], 
             num_examples=2, 
-            pad_idx=self.config['pad_idx']
+            pad_idx=self.config['pad_idx'],
+            debug=debug
         )
 
     def train(self, epochs):
