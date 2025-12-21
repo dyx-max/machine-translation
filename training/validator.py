@@ -5,12 +5,12 @@ import torch
 
 from data.tokenizer import decode_sp
 from training.loss import LabelSmoothingLoss
-from utils.decoder import beam_search_decode
+from utils.decoder import beam_search_decode, greedy_decode
 
 
-def run_validation(model, dataloader, sp_src, sp_tgt, device, max_len=64, num_examples=2, pad_idx=0, debug=False):
+def run_validation(model, dataloader, sp_src, sp_tgt, device, max_len=64, num_examples=2, pad_idx=0, debug=False, decode_method="greedy"):
     """
-    运行验证（改进版：添加调试输出）
+    运行验证（改进版：支持贪心解码和beam search）
     Args:
         model: 模型
         dataloader: 验证数据加载器
@@ -21,6 +21,7 @@ def run_validation(model, dataloader, sp_src, sp_tgt, device, max_len=64, num_ex
         num_examples: 打印示例数量
         pad_idx: padding索引
         debug: 是否打印调试信息
+        decode_method: 解码方法，"greedy" 或 "beam_search"（默认"greedy"）
     """
     model.eval()
     criterion = LabelSmoothingLoss(classes=sp_tgt.vocab_size(), smoothing=0.1, ignore_index=pad_idx)
@@ -43,12 +44,19 @@ def run_validation(model, dataloader, sp_src, sp_tgt, device, max_len=64, num_ex
             if count <= num_examples:
                 src_text = decode_sp(sp_src, src_ids[0].cpu().tolist())
                 tgt_text = decode_sp(sp_tgt, tgt_ids[0].cpu().tolist())
-                # 验证阶段打印样例：使用beam search
-                pred_text = beam_search_decode(model, src_ids[0].cpu(), sp_src, sp_tgt, device, max_len, pad_idx, beam_size=4)
+                
+                # 根据decode_method选择解码方式
+                if decode_method == "greedy":
+                    pred_text = greedy_decode(model, src_ids[0].cpu(), sp_src, sp_tgt, device, max_len, pad_idx)
+                elif decode_method == "beam_search":
+                    pred_text = beam_search_decode(model, src_ids[0].cpu(), sp_src, sp_tgt, device, max_len, pad_idx, beam_size=4)
+                else:
+                    raise ValueError(f"Unknown decode_method: {decode_method}, must be 'greedy' or 'beam_search'")
+                
                 print("-"*80)
                 print(f"SOURCE:    {src_text}")
                 print(f"TARGET:    {tgt_text}")
-                print(f"PREDICTED: {pred_text}")
+                print(f"PREDICTED ({decode_method}): {pred_text}")
                 
                 # 调试输出
                 if debug and hasattr(model, 'encode'):

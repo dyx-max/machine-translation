@@ -81,8 +81,13 @@ class Trainer:
         print(f"Epoch {epoch} average loss: {avg_loss:.4f}")
         return avg_loss
 
-    def validate(self, epoch, debug=False):
-        """验证"""
+    def validate(self, epoch, debug=False, decode_method="greedy"):
+        """验证
+        Args:
+            epoch: epoch编号
+            debug: 是否打印调试信息
+            decode_method: 解码方法，"greedy"（默认，推荐）或 "beam_search"
+        """
         run_validation(
             self.model, 
             self.valid_loader, 
@@ -92,7 +97,8 @@ class Trainer:
             max_len=self.config['max_tgt_len'], 
             num_examples=2, 
             pad_idx=self.config['pad_idx'],
-            debug=debug
+            debug=debug,
+            decode_method=decode_method
         )
 
     def train(self, epochs):
