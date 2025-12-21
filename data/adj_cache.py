@@ -85,12 +85,40 @@ def ensure_adj_cache(ds, src_lang: str, tgt_lang: str, max_src_len: int, max_tgt
     f_tgt = os.path.join(cache_dir, 'adj_tgt_in.pt')
     f_meta = os.path.join(cache_dir, 'meta.json')
 
-    # 检查缓存是否存在
+    # 检查缓存是否存在且大小匹配
     if not force_recompute and os.path.exists(f_src) and os.path.exists(f_tgt):
-        print(f"加载已存在的缓存: {cache_dir}")
-        adj_src = torch.load(f_src, map_location='cpu')
-        adj_tgt_in = torch.load(f_tgt, map_location='cpu')
-        return adj_src, adj_tgt_in
+        # 检查元数据是否存在
+        cache_valid = False
+        if os.path.exists(f_meta):
+            try:
+                with open(f_meta, 'r', encoding='utf-8') as f:
+                    meta = json.load(f)
+                    cached_count = meta.get('count', 0)
+                    # 检查数据集大小是否匹配
+                    if cached_count == len(ds):
+                        cache_valid = True
+                    else:
+                        print(f"警告: 缓存大小 ({cached_count}) 与数据集大小 ({len(ds)}) 不匹配，将重新计算")
+            except Exception as e:
+                print(f"警告: 读取缓存元数据失败: {e}，将重新计算")
+        else:
+            # 如果没有元数据，检查tensor大小
+            try:
+                adj_src_test = torch.load(f_src, map_location='cpu')
+                if adj_src_test.shape[0] == len(ds):
+                    cache_valid = True
+                else:
+                    print(f"警告: 缓存tensor大小 ({adj_src_test.shape[0]}) 与数据集大小 ({len(ds)}) 不匹配，将重新计算")
+            except Exception as e:
+                print(f"警告: 检查缓存失败: {e}，将重新计算")
+        
+        if cache_valid:
+            print(f"加载已存在的缓存: {cache_dir} (大小: {len(ds)})")
+            adj_src = torch.load(f_src, map_location='cpu')
+            adj_tgt_in = torch.load(f_tgt, map_location='cpu')
+            return adj_src, adj_tgt_in
+        else:
+            print(f"缓存无效，将重新计算...")
 
     # 收集文本
     print(f"收集文本数据（共 {len(ds)} 条）...")
