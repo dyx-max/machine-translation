@@ -80,7 +80,7 @@ class TransformerGCN(nn.Module):
         return src_attn_mask, tgt_attn_mask, memory_attn_mask
 
     def encode(self, src: torch.Tensor, src_attn_mask: torch.Tensor, adj_src: torch.Tensor):
-        """编码（改进版：GCN使用Transformer第一层输出，统一特征空间）"""
+        """编码（改进版：GCN使用Transformer第一层输出，统一特征空间 + padding mask）"""
         src_emb = self.dropout(self.pos_encoder(self.src_embed(src)))  # [B,S,d_model]
 
         # Transformer编码
@@ -92,10 +92,11 @@ class TransformerGCN(nn.Module):
             if i == 0:
                 transformer_first_out = t_out
 
-        # GCN处理（使用Transformer第一层输出，而不是初始embedding）
+        # GCN处理（使用Transformer第一层输出 + padding mask）
         adj_src = adj_src.to(src.device)
-        # 使用Transformer第一层输出作为GCN输入，添加残差连接确保信息流
-        g_out = self.src_syntax_gcn(transformer_first_out, adj_src)  # [B,S,d_model]
+        src_pad_mask = (src == self.pad_idx)  # [B, S]，True表示padding位置
+        # 使用Transformer第一层输出作为GCN输入，添加padding mask
+        g_out = self.src_syntax_gcn(transformer_first_out, adj_src, pad_mask=src_pad_mask)  # [B,S,d_model]
         
         # 融合：Transformer深层输出 + GCN输出（基于Transformer第一层）
         enc_out = self.enc_fusion(t_out, g_out)
@@ -104,7 +105,7 @@ class TransformerGCN(nn.Module):
     def decode(self, tgt: torch.Tensor, memory: torch.Tensor, tgt_attn_mask: torch.Tensor,
                memory_attn_mask: torch.Tensor, adj_tgt: torch.Tensor = None, use_tgt_gcn: bool = True):
         """
-        解码（改进版：GCN使用Transformer第一层输出，统一特征空间）
+        解码（改进版：GCN使用Transformer第一层输出，统一特征空间 + padding mask）
         
         Args:
             tgt: 目标序列
@@ -127,7 +128,9 @@ class TransformerGCN(nn.Module):
         # GCN处理（可选：解码时可禁用target端GCN）
         if use_tgt_gcn and adj_tgt is not None:
             adj_tgt = adj_tgt.to(tgt.device)
-            g_out = self.tgt_syntax_gcn(transformer_first_out, adj_tgt)  # [B,T,d_model]
+            tgt_pad_mask = (tgt == self.pad_idx)  # [B, T]，True表示padding位置
+            # 使用Transformer第一层输出作为GCN输入，添加padding mask
+            g_out = self.tgt_syntax_gcn(transformer_first_out, adj_tgt, pad_mask=tgt_pad_mask)  # [B,T,d_model]
             # 融合：Transformer深层输出 + GCN输出（基于Transformer第一层）
             dec_out = self.dec_fusion(t_out, g_out)
         else:

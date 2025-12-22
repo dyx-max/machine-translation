@@ -368,8 +368,18 @@ beam_size = config.get('decoding', {}).get('beam_size', 5)
 ### 1. Transformer + GCN融合
 
 - **Transformer**: 标准的编码器-解码器架构
-- **GCN**: 处理依存句法信息
-- **融合方式**: 支持concat和gate两种模式
+- **GCN**: 处理依存句法信息（改进版）
+  - ✅ **边权重**: 可学习的全局缩放因子，自动调整句法信息强度
+  - ✅ **Padding mask**: 防止padding位置参与GCN聚合
+  - ✅ **输出scale**: 使用 `1/sqrt(d_model)` 缩放，防止数值爆炸
+  - ✅ **LayerNorm**: 归一化每层输出，稳定训练
+  - ✅ **残差连接**: 保留原始信息，缓解梯度消失
+- **融合方式**: 支持concat和gate两种模式（改进版）
+  - ✅ **残差连接**: 保留Transformer原始输出，防止信息漂移
+  - ✅ **正确的LayerNorm位置**: Post-LN模式（`LN(x + Sublayer(x))`）
+  - ✅ **Gate初始化**: Xavier初始化，确保训练稳定
+  - ✅ **对齐检查**: 确保Transformer和GCN输出形状一致
+  - ✅ **Dropout + Residual组合**: 标准Transformer模式
 - **特征对齐**: GCN使用Transformer第一层输出，统一特征空间
 - **训练/推理一致性**: 训练时使用source端GCN + target端GCN，推理时禁用target端GCN以提高速度
 
