@@ -53,11 +53,11 @@ try:
 except LookupError:
     print("✗ NLTK数据: 未下载（运行 nltk.download()）")
 
-# 检查项目模块
+# 检查项目模块（使用新的mt包）
 try:
-    from models.model import TransformerGCN
-    from data.dataset import WMTDataset
-    from training.trainer import Trainer
+    from mt.models.model import TransformerGCN
+    from mt.data.dataset import WMTDataset
+    from mt.training.trainer import Trainer
     print("✓ 项目模块: 导入成功")
 except Exception as e:
     print(f"✗ 项目模块: {e}")

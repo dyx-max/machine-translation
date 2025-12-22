@@ -1,6 +1,6 @@
 """
 快速修复：在现有代码中使用新的beam search解码器
-使用方法：在training/validator.py中导入此模块
+注意：此文件是临时适配器，建议直接使用 mt.decoding.beam 和 mt.decoding.greedy
 """
 import sys
 import os

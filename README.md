@@ -663,7 +663,7 @@ python test_installation.py
 - ✅ **已完成**: 解码模块改进（长度惩罚、重复惩罚、禁用target端GCN）
 - ✅ **已完成**: 评估模块、脚本、测试
 
-**导入路径**：所有代码使用 `mt.*` 导入：
+**导入路径**：所有新代码使用 `mt.*` 导入：
 
 ```python
 from mt.models.model import TransformerGCN
@@ -673,6 +673,8 @@ from mt.decoding.beam import beam_search_decode
 from mt.decoding.greedy import greedy_decode
 from mt.eval.sacrebleu_eval import evaluate_sacrebleu
 ```
+
+**注意**：旧的顶层包（`models/`, `data/`, `training/`, `utils/`）已被删除。**所有代码统一使用`mt/`包**。
 
 ---
 
