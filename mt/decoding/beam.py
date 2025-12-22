@@ -119,13 +119,23 @@ def beam_search_decode(
 
                 _, tgt_mask, mem_mask = model.build_masks(src_ids, seq)
                 
-                # 解码：如果禁用target端GCN，设置use_tgt_gcn=False
+                # 解码：兼容纯 Transformer 与含 GCN 模型
+                supports_tgt_gcn = hasattr(model, 'tgt_syntax_gcn')
                 if disable_tgt_gcn:
-                    # 禁用target端GCN，只使用Transformer
-                    dec_out = model.decode(seq, memory, tgt_mask, mem_mask, adj_tgt=None, use_tgt_gcn=False)
+                    if supports_tgt_gcn:
+                        try:
+                            dec_out = model.decode(seq, memory, tgt_mask, mem_mask, adj_tgt=None, use_tgt_gcn=False)
+                        except TypeError:
+                            dec_out = model.decode(seq, memory, tgt_mask, mem_mask)
+                    else:
+                        dec_out = model.decode(seq, memory, tgt_mask, mem_mask)
                 else:
-                    # 使用target端GCN（如果adj_tgt可用）
-                    dec_out = model.decode(seq, memory, tgt_mask, mem_mask, adj_tgt, use_tgt_gcn=True)
+                    # 使用target端GCN（如果模型支持且adj_tgt可用）
+                    if supports_tgt_gcn:
+                        dec_out = model.decode(seq, memory, tgt_mask, mem_mask, adj_tgt, use_tgt_gcn=True)
+                    else:
+                        # 模型不支持GCN，回退
+                        dec_out = model.decode(seq, memory, tgt_mask, mem_mask)
                 
                 logits = model.generator(dec_out[:, -1:, :])  # [1,1,V]
                 log_probs = F.log_softmax(logits, dim=-1)  # [1,1,V]

@@ -65,6 +65,8 @@ def greedy_decode(
         tgt_ids = torch.tensor([[1]], device=device)  # BOS token
         generated_tokens = set()  # 用于重复惩罚
 
+        supports_tgt_gcn = hasattr(model, "tgt_syntax_gcn")
+
         for step in range(max_len-1):
             # 检查是否已生成EOS
             if tgt_ids[0, -1].item() == 2:  # EOS
@@ -72,25 +74,29 @@ def greedy_decode(
 
             _, tgt_mask, mem_mask = model.build_masks(src_ids, tgt_ids)
             
-            # 解码：如果禁用target端GCN，设置use_tgt_gcn=False
+            # 解码：兼容纯Transformer（无GCN）与含GCN模型
             if disable_tgt_gcn:
-                # 禁用target端GCN，只使用Transformer
-                dec_out = model.decode(tgt_ids, memory, tgt_mask, mem_mask, adj_tgt=None, use_tgt_gcn=False)
+                # 禁用 target 端 GCN
+                if supports_tgt_gcn:
+                    # 模型支持GCN，显式关闭
+                    try:
+                        dec_out = model.decode(tgt_ids, memory, tgt_mask, mem_mask, adj_tgt=None, use_tgt_gcn=False)
+                    except TypeError:
+                        dec_out = model.decode(tgt_ids, memory, tgt_mask, mem_mask)
+                else:
+                    # 纯 Transformer 基线
+                    dec_out = model.decode(tgt_ids, memory, tgt_mask, mem_mask)
             else:
                 # 使用target端GCN（需要构建adj_tgt）
-                needs_adj = hasattr(model, 'tgt_syntax_gcn')
-                if needs_adj:
-                    try:
-                        adj_tgt = build_dep_adj(
-                            [decode_sp(sp_tgt, tgt_ids[0].cpu().tolist())],
-                            lang="en", 
-                            max_len=tgt_ids.size(1)
-                        ).to(device)
-                    except:
-                        adj_tgt = torch.eye(tgt_ids.size(1), device=device, dtype=torch.float32)
-                    dec_out = model.decode(tgt_ids, memory, tgt_mask, mem_mask, adj_tgt, use_tgt_gcn=True)
-                else:
-                    dec_out = model.decode(tgt_ids, memory, tgt_mask, mem_mask, adj_tgt=None, use_tgt_gcn=False)
+                try:
+                    adj_tgt = build_dep_adj(
+                        [decode_sp(sp_tgt, tgt_ids[0].cpu().tolist())],
+                        lang="en", 
+                        max_len=tgt_ids.size(1)
+                    ).to(device)
+                except:
+                    adj_tgt = torch.eye(tgt_ids.size(1), device=device, dtype=torch.float32)
+                dec_out = model.decode(tgt_ids, memory, tgt_mask, mem_mask, adj_tgt, use_tgt_gcn=True)
             
             logits = model.generator(dec_out[:, -1:, :])  # [1,1,V]
             log_probs = F.log_softmax(logits, dim=-1)  # [1,1,V]
