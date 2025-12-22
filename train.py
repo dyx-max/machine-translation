@@ -156,6 +156,16 @@ def main(config_path="configs/gcn_fusion.yaml"):
         }
     )
 
+    # 注册验证钩子（每个epoch结束后解码并打印样例）
+    from mt.training.hooks import create_validation_hook
+    validation_hook = create_validation_hook(
+        model, valid_loader, sp_src, sp_tgt, device,
+        config={'max_tgt_len': max_tgt_len, 'pad_idx': model_config['pad_idx']},
+        num_samples=2,
+        decode_method="greedy"  # 验证时使用greedy解码，更快
+    )
+    trainer.hooks.register_on_validation_end(validation_hook)
+
     # 开始训练
     print("开始训练...")
     trainer.train(epochs)
