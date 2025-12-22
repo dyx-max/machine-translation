@@ -1,0 +1,67 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "machine-translation"
+version = "0.1.0"
+description = "Transformer + GCN based machine translation system"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"},
+]
+keywords = ["machine-translation", "transformer", "gcn", "nlp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "torch>=2.0.0",
+    "datasets>=2.0.0",
+    "sentencepiece>=0.1.99",
+    "sacrebleu>=2.0.0",
+    "nltk>=3.8",
+    "pyter3>=0.3.0",
+    "tqdm>=4.65.0",
+    "spacy>=3.7.0",
+    "numpy>=1.24.0,<2.0.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/machine-translation"
+Documentation = "https://github.com/yourusername/machine-translation#readme"
+Repository = "https://github.com/yourusername/machine-translation"
+Issues = "https://github.com/yourusername/machine-translation/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mt*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+

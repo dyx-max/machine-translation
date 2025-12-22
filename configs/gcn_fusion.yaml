@@ -1,0 +1,22 @@
+# GCN融合实验配置
+# 继承base.yaml，覆盖特定项
+
+# 模型配置覆盖
+model:
+  fusion_mode: "gate"  # 或 "concat"
+  gcn_layers_src: 2
+  gcn_layers_tgt: 2
+
+# 句法图配置
+dependency:
+  edge_strategy: "full"  # "core" (主干only), "core+mod" (主干+修饰), "full" (全依存)
+  edge_weights:
+    root: 1.5
+    nsubj: 1.5
+    obj: 1.5
+    modifier: 1.0
+    weak: 0.5
+  normalization: "sym"  # "sym" (对称归一化), "row" (行归一化), "none"
+  add_self_loop: true
+  spacy_parse_limit: 64
+

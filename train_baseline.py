@@ -1,8 +1,8 @@
 """
-纯Transformer基线训练脚本（用于对比）
-使用方法：python train_baseline.py
+纯Transformer基线训练脚本（使用YAML配置）
 """
 import os
+import argparse
 import nltk
 nltk.download('wordnet')
 nltk.download('punkt')
@@ -11,11 +11,11 @@ import torch
 from torch.utils.data import DataLoader
 from datasets import load_dataset
 
-from config import Config
-from models.transformer_baseline import TransformerBaseline
-from data.tokenizer import train_or_load_spm
-from data.dataset import WMTDataset, collate_batch
-from training.trainer import Trainer
+from mt.utils.config_loader import load_config
+from mt.models.transformer_baseline import TransformerBaseline
+from mt.data.tokenizer import train_or_load_spm
+from mt.data.dataset import WMTDataset, collate_batch
+from mt.training.trainer import Trainer
 
 
 def prepare_corpus(ds_train, zh_corpus, en_corpus, train_size):
@@ -31,66 +31,91 @@ def prepare_corpus(ds_train, zh_corpus, en_corpus, train_size):
         print(f"语料文件已存在: {zh_corpus}, {en_corpus}")
 
 
-def main():
+def main(config_path="configs/gcn_fusion.yaml"):
     """主函数"""
-    config = Config()
-    device = torch.device(config.device if torch.cuda.is_available() else "cpu")
+    # 加载YAML配置
+    config = load_config(config_path)
+    
+    # 设备配置
+    device_type = config.get('device', {}).get('type', 'auto')
+    if device_type == 'auto':
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    elif device_type == 'cuda':
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device("cpu")
     print(f"使用设备: {device}")
-    print("="*80)
-    print("训练纯Transformer基线模型（无GCN）")
-    print("="*80)
+
+    # 数据配置
+    data_config = config['data']
+    max_src_len = data_config['max_src_len']
+    max_tgt_len = data_config['max_tgt_len']
+    train_size = data_config['train_size']
+    vocab_size = data_config['vocab_size']
+    zh_corpus = data_config['zh_corpus']
+    en_corpus = data_config['en_corpus']
+    spm_zh_prefix = data_config['spm_zh_prefix']
+    spm_en_prefix = data_config['spm_en_prefix']
 
     # 加载数据集
     print("加载数据集...")
     wmt = load_dataset("wmt17", "zh-en")
-    ds_train = wmt["train"].select(range(config.train_size))
+    ds_train = wmt["train"].select(range(train_size))
     ds_valid = wmt["validation"]
 
     # 准备语料文件
-    prepare_corpus(ds_train, config.zh_corpus, config.en_corpus, config.train_size)
+    prepare_corpus(ds_train, zh_corpus, en_corpus, train_size)
 
     # 训练或加载SentencePiece模型
     print("加载/训练SentencePiece模型...")
-    sp_src = train_or_load_spm(config.zh_corpus, config.spm_zh_prefix, config.vocab_size)
-    sp_tgt = train_or_load_spm(config.en_corpus, config.spm_en_prefix, config.vocab_size)
+    sp_src = train_or_load_spm(zh_corpus, spm_zh_prefix, vocab_size)
+    sp_tgt = train_or_load_spm(en_corpus, spm_en_prefix, vocab_size)
 
-    # 纯Transformer不需要邻接矩阵，跳过缓存计算以节省时间和存储
-    print("纯Transformer模型不需要邻接矩阵，跳过缓存计算...")
+    # 训练配置
+    training_config = config['training']
+    batch_size = training_config['batch_size']
+    epochs = training_config['epochs']
+    dataloader_workers = training_config.get('dataloader_workers')
+    if dataloader_workers is None:
+        dataloader_workers = max(1, (os.cpu_count() or 2) // 2)
+    pin_memory = training_config.get('pin_memory', True)
+    persistent_workers = training_config.get('persistent_workers', True)
 
-    # 创建数据加载器（skip_adj=True 跳过邻接矩阵计算）
+    # 创建数据加载器（纯Transformer，跳过邻接矩阵）
     print("创建数据加载器...")
     train_loader = DataLoader(
-        WMTDataset(ds_train, sp_src, sp_tgt, config.max_src_len, config.max_tgt_len,
-                   skip_adj=True),  # 跳过邻接矩阵计算
-        batch_size=config.batch_size,
+        WMTDataset(ds_train, sp_src, sp_tgt, max_src_len, max_tgt_len, skip_adj=True),
+        batch_size=batch_size,
         shuffle=True,
         collate_fn=collate_batch,
-        num_workers=config.dataloader_workers,
-        pin_memory=(config.pin_memory and device.type=='cuda'),
-        persistent_workers=config.persistent_workers if config.dataloader_workers > 0 else False,
+        num_workers=dataloader_workers,
+        pin_memory=(pin_memory and device.type=='cuda'),
+        persistent_workers=persistent_workers if dataloader_workers > 0 else False,
     )
     valid_loader = DataLoader(
-        WMTDataset(ds_valid, sp_src, sp_tgt, config.max_src_len, config.max_tgt_len,
-                   skip_adj=True),  # 跳过邻接矩阵计算
+        WMTDataset(ds_valid, sp_src, sp_tgt, max_src_len, max_tgt_len, skip_adj=True),
         batch_size=1,
         collate_fn=collate_batch,
-        num_workers=max(1, config.dataloader_workers//2),
-        pin_memory=(config.pin_memory and device.type=='cuda'),
-        persistent_workers=(config.dataloader_workers//2) > 0 and config.persistent_workers,
+        num_workers=max(1, dataloader_workers//2),
+        pin_memory=(pin_memory and device.type=='cuda'),
+        persistent_workers=(dataloader_workers//2) > 0 and persistent_workers,
     )
 
-    # 创建纯Transformer模型
-    print("创建纯Transformer模型...")
+    # 模型配置
+    model_config = config['model']
+    
+    # 创建模型（纯Transformer基线）
+    print("创建模型（纯Transformer基线）...")
     model = TransformerBaseline(
-        d_model=config.d_model,
-        num_heads=config.num_heads,
-        num_layers=config.num_layers,
-        d_ff=config.d_ff,
+        d_model=model_config['d_model'],
+        num_heads=model_config['num_heads'],
+        num_layers=model_config['num_layers'],
+        d_ff=model_config['d_ff'],
         src_vocab_size=sp_src.vocab_size(),
         tgt_vocab_size=sp_tgt.vocab_size(),
-        max_len=max(config.max_src_len, config.max_tgt_len),
-        pad_idx=config.pad_idx,
-        dropout=config.dropout,
+        max_len=max(max_src_len, max_tgt_len),
+        pad_idx=model_config['pad_idx'],
+        dropout=model_config['dropout'],
     ).to(device)
 
     # 创建训练器
@@ -102,20 +127,24 @@ def main():
         sp_tgt=sp_tgt,
         device=device,
         config={
-            'd_model': config.d_model,
-            'max_tgt_len': config.max_tgt_len,
-            'pad_idx': config.pad_idx,
+            'd_model': model_config['d_model'],
+            'max_tgt_len': max_tgt_len,
+            'pad_idx': model_config['pad_idx'],
         }
     )
 
     # 开始训练
-    print("开始训练纯Transformer基线...")
-    trainer.train(config.epochs)
+    print("开始训练...")
+    trainer.train(epochs)
 
     print("训练完成！")
     return model, sp_src, sp_tgt
 
 
 if __name__ == "__main__":
-    model, sp_src, sp_tgt = main()
-
+    parser = argparse.ArgumentParser(description="训练纯Transformer基线模型")
+    parser.add_argument("--config", type=str, default="configs/gcn_fusion.yaml",
+                       help="配置文件路径（默认: configs/gcn_fusion.yaml）")
+    args = parser.parse_args()
+    
+    model, sp_src, sp_tgt = main(args.config)

@@ -1,93 +1,85 @@
 """
-独立的预计算脚本：提前生成邻接矩阵缓存
-在训练前运行此脚本，可以提前计算并保存邻接矩阵，训练时直接加载，完全没有开销。
+预计算邻接矩阵缓存脚本（使用YAML配置）
 """
 import os
-import nltk
-nltk.download('wordnet', quiet=True)
-nltk.download('punkt', quiet=True)
-
+import argparse
 import torch
 from datasets import load_dataset
 
-from config import Config
-from data.adj_cache import ensure_adj_cache
+from mt.utils.config_loader import load_config
+from mt.data.cache import ensure_adj_cache
 
 
-def main():
-    """主函数：预计算并缓存邻接矩阵"""
-    config = Config()
+def main(config_path="configs/gcn_fusion.yaml"):
+    """主函数"""
+    # 加载YAML配置
+    config = load_config(config_path)
+    
+    # 数据配置
+    data_config = config['data']
+    train_size = data_config['train_size']
+    max_src_len = data_config['max_src_len']
+    max_tgt_len = data_config['max_tgt_len']
+    cache_root = data_config['cache_root']
+    precompute_chunk_size = data_config['precompute_chunk_size']
     
     print("=" * 60)
-    print("邻接矩阵预计算脚本")
+    print("预计算邻接矩阵缓存")
     print("=" * 60)
-    print(f"训练集大小: {config.train_size}")
-    print(f"源语言最大长度: {config.max_src_len}")
-    print(f"目标语言最大长度: {config.max_tgt_len}")
-    print(f"批处理大小 (chunk_size): {config.precompute_chunk_size}")
+    print(f"训练集大小: {train_size}")
+    print(f"源语言最大长度: {max_src_len}")
+    print(f"目标语言最大长度: {max_tgt_len}")
+    print(f"批处理大小 (chunk_size): {precompute_chunk_size}")
     print("=" * 60)
-    print()
-
+    
     # 加载数据集
-    print("加载数据集...")
+    print("\n加载数据集...")
     wmt = load_dataset("wmt17", "zh-en")
-    ds_train = wmt["train"].select(range(config.train_size))
+    ds_train = wmt["train"].select(range(train_size))
     ds_valid = wmt["validation"]
-    print(f"✓ 训练集: {len(ds_train)} 条")
-    print(f"✓ 验证集: {len(ds_valid)} 条")
-    print()
-
+    
+    print(f"训练集: {len(ds_train)} 条")
+    print(f"验证集: {len(ds_valid)} 条")
+    
     # 预计算训练集缓存
+    print("\n" + "=" * 60)
+    print("预计算训练集邻接矩阵缓存...")
     print("=" * 60)
-    print("预计算训练集邻接矩阵")
-    print("=" * 60)
-    cache_train_dir = os.path.join(config.cache_root, "train")
+    cache_train_dir = os.path.join(cache_root, "train")
     adj_src_train, adj_tgt_in_train = ensure_adj_cache(
-        ds_train, 
-        src_lang="zh", 
-        tgt_lang="en",
-        max_src_len=config.max_src_len, 
-        max_tgt_in_len=config.max_tgt_len-1,
+        ds_train, src_lang="zh", tgt_lang="en",
+        max_src_len=max_src_len, 
+        max_tgt_in_len=max_tgt_len-1,
         cache_dir=cache_train_dir, 
-        chunk_size=config.precompute_chunk_size, 
+        chunk_size=precompute_chunk_size, 
         dtype=torch.float16,
     )
-    print(f"✓ 训练集缓存完成")
-    print(f"  - 源语言矩阵形状: {adj_src_train.shape}")
-    print(f"  - 目标语言矩阵形状: {adj_tgt_in_train.shape}")
-    print()
-
+    print(f"✓ 训练集缓存完成: {cache_train_dir}")
+    
     # 预计算验证集缓存
+    print("\n" + "=" * 60)
+    print("预计算验证集邻接矩阵缓存...")
     print("=" * 60)
-    print("预计算验证集邻接矩阵")
-    print("=" * 60)
-    cache_valid_dir = os.path.join(config.cache_root, "valid")
+    cache_valid_dir = os.path.join(cache_root, "valid")
     adj_src_valid, adj_tgt_in_valid = ensure_adj_cache(
-        ds_valid, 
-        src_lang="zh", 
-        tgt_lang="en",
-        max_src_len=config.max_src_len, 
-        max_tgt_in_len=config.max_tgt_len-1,
+        ds_valid, src_lang="zh", tgt_lang="en",
+        max_src_len=max_src_len, 
+        max_tgt_in_len=max_tgt_len-1,
         cache_dir=cache_valid_dir, 
-        chunk_size=config.precompute_chunk_size, 
+        chunk_size=precompute_chunk_size, 
         dtype=torch.float16,
     )
-    print(f"✓ 验证集缓存完成")
-    print(f"  - 源语言矩阵形状: {adj_src_valid.shape}")
-    print(f"  - 目标语言矩阵形状: {adj_tgt_in_valid.shape}")
-    print()
-
-    print("=" * 60)
-    print("✓ 所有缓存预计算完成！")
-    print("=" * 60)
-    print(f"缓存位置:")
-    print(f"  - 训练集: {cache_train_dir}")
-    print(f"  - 验证集: {cache_valid_dir}")
-    print()
-    print("现在可以运行 train.py 开始训练，训练时会直接加载这些缓存。")
+    print(f"✓ 验证集缓存完成: {cache_valid_dir}")
+    
+    print("\n" + "=" * 60)
+    print("所有缓存预计算完成！")
     print("=" * 60)
 
 
 if __name__ == "__main__":
-    main()
-
+    parser = argparse.ArgumentParser(description="预计算邻接矩阵缓存")
+    parser.add_argument("--config", type=str, default="configs/gcn_fusion.yaml",
+                       help="配置文件路径（默认: configs/gcn_fusion.yaml）")
+    args = parser.parse_args()
+    
+    main(args.config)

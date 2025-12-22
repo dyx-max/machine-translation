@@ -1,0 +1,55 @@
+# 基础配置 - 模型、数据、训练通用项
+
+# 数据配置
+data:
+  max_src_len: 64
+  max_tgt_len: 64
+  train_size: 50000
+  vocab_size: 8000
+  cache_root: "cache"
+  precompute_chunk_size: 3000
+  zh_corpus: "zh.txt"
+  en_corpus: "en.txt"
+  spm_zh_prefix: "spm_zh"
+  spm_en_prefix: "spm_en"
+
+# 模型配置
+model:
+  d_model: 512
+  num_heads: 8
+  num_layers: 4
+  d_ff: 1024
+  dropout: 0.1
+  gcn_layers_src: 2
+  gcn_layers_tgt: 2
+  fusion_mode: "gate"  # "concat" 或 "gate"
+  pad_idx: 0
+
+# 训练配置
+training:
+  batch_size: 32
+  epochs: 10
+  dataloader_workers: null  # null表示自动计算: max(1, cpu_count() // 2)
+  pin_memory: true
+  persistent_workers: true
+  gradient_clip: 1.0
+  label_smoothing: 0.1
+  eos_weight: 2.0
+
+# 优化器配置
+optimizer:
+  type: "adam"
+  betas: [0.9, 0.98]
+  eps: 1e-9
+
+# 学习率调度器配置
+scheduler:
+  type: "noam"
+  factor: 2.0
+  warmup: 4000
+
+# 设备配置
+device:
+  type: "auto"  # "auto", "cuda", "cpu"
+  cuda_visible_devices: null
+
