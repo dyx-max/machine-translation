@@ -86,6 +86,17 @@ def main(config_path="configs/gcn_fusion.yaml"):
 
 
 if __name__ == "__main__":
+    import multiprocessing as mp
+
+    # Set the start method to 'spawn' for spaCy compatibility
+    # This should be done only once, at the beginning of the script execution
+    try:
+        mp.set_start_method('spawn', force=True)
+        print("Multiprocessing start method set to 'spawn'.")
+    except RuntimeError:
+        # The start method can only be set once.
+        # If it's already set, we can ignore the error.
+        pass
     parser = argparse.ArgumentParser(description="预计算邻接矩阵缓存")
     parser.add_argument("--config", type=str, default="configs/gcn_fusion.yaml",
                        help="配置文件路径（默认: configs/gcn_fusion.yaml）")

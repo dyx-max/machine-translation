@@ -157,28 +157,28 @@ def compute_adj_parallel(texts, lang: str, max_len: int, chunk_size: int = 1000,
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def compute_adj_sequential(texts, lang: str, max_len: int, chunk_size: int = 3000,
+def compute_adj_sequential(texts, lang: str, max_len: int, chunk_size: int = 3000, 
                            desc: str = "计算邻接矩阵") -> torch.Tensor:
     """
     单进程顺序计算依存邻接矩阵（兼容旧版）
     """
     if len(texts) == 0:
         return torch.empty(0, max_len, max_len, dtype=torch.float32)
-
+    
     print(f"  预加载spaCy模型 ({lang})...", end=" ", flush=True)
     nlp = _get_nlp(lang)
     print("✓")
-
+    
     all_adjs = []
     chunks = list(_chunks(texts, chunk_size))
     total_chunks = len(chunks)
-
-    for chunk in tqdm(chunks, desc=desc, unit="chunk", total=total_chunks,
+    
+    for chunk in tqdm(chunks, desc=desc, unit="chunk", total=total_chunks, 
                       bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'):
         with torch.no_grad():
             adj_batch = build_dep_adj(chunk, lang=lang, max_len=max_len, nlp=nlp)
             all_adjs.append(adj_batch.cpu())
-
+    
     result = torch.cat(all_adjs, dim=0)
     print(f"  ✓ 完成，共 {len(texts)} 条文本，矩阵形状: {result.shape}")
     return result
@@ -217,7 +217,7 @@ def ensure_adj_cache(ds, src_lang: str, tgt_lang: str, max_src_len: int, max_tgt
                     print(f"警告: 缓存tensor大小 ({adj_src_test.shape[0]}) 与数据集大小 ({len(ds)}) 不匹配，将重新计算")
             except Exception as e:
                 print(f"警告: 检查缓存失败: {e}，将重新计算")
-
+        
         if cache_valid:
             print(f"加载已存在的缓存: {cache_dir} (大小: {len(ds)})")
             adj_src = torch.load(f_src, map_location='cpu')
@@ -242,7 +242,7 @@ def ensure_adj_cache(ds, src_lang: str, tgt_lang: str, max_src_len: int, max_tgt
 
     print(f"\n计算源语言 ({src_lang}) 邻接矩阵...")
     adj_src = compute_fn(src_texts, src_lang, max_src_len, desc=f"计算 {src_lang} 邻接矩阵", **compute_kwargs)
-
+    
     print(f"\n计算目标语言 ({tgt_lang}) 邻接矩阵...")
     adj_tgt_in = compute_fn(tgt_texts, tgt_lang, max_tgt_in_len, desc=f"计算 {tgt_lang} 邻接矩阵", **compute_kwargs)
 
