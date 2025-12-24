@@ -2,9 +2,9 @@
 
 # 数据配置
 data:
-  max_src_len: 64
-  max_tgt_len: 64
-  train_size: 50000
+  max_src_len: 128
+  max_tgt_len: 128
+  train_size: 100000
   vocab_size: 8000
   cache_root: "cache"
   precompute_chunk_size: 3000
@@ -30,12 +30,12 @@ model:
 # 训练配置
 training:
   batch_size: 32
-  epochs: 10
+  epochs: 20
   dataloader_workers: null  # null表示自动计算: max(1, cpu_count() // 2)
   pin_memory: true
   persistent_workers: true
   gradient_clip: 1.0
-  label_smoothing: 0.1
+  label_smoothing: 0
   eos_weight: 2.0
 
 # 优化器配置
@@ -52,6 +52,6 @@ scheduler:
 
 # 设备配置
 device:
-  type: "auto"  # "auto", "cuda", "cpu"
+  type: "cuda"  # "auto", "cuda", "cpu"
   cuda_visible_devices: null
 

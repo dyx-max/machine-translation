@@ -9,7 +9,7 @@ model:
 
 # 句法图配置
 dependency:
-  edge_strategy: "full"  # "core" (主干only), "core+mod" (主干+修饰), "full" (全依存)
+  edge_strategy: "core+mod"  # "core" (主干only), "core+mod" (主干+修饰), "full" (全依存)
   edge_weights:
     root: 1.5
     nsubj: 1.5
