@@ -8,6 +8,8 @@ data:
   vocab_size: 8000
   cache_root: "cache"
   precompute_chunk_size: 3000
+  precompute_max_workers: null  # null表示自动设置（CPU核心数，最多8个）
+  precompute_use_parallel: true  # 是否使用多进程并行处理
   zh_corpus: "zh.txt"
   en_corpus: "en.txt"
   spm_zh_prefix: "spm_zh"

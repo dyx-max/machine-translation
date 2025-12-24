@@ -22,6 +22,8 @@ def main(config_path="configs/gcn_fusion.yaml"):
     max_tgt_len = data_config['max_tgt_len']
     cache_root = data_config['cache_root']
     precompute_chunk_size = data_config['precompute_chunk_size']
+    precompute_max_workers = data_config.get('precompute_max_workers')  # 使用get避免老配置报错
+    precompute_use_parallel = data_config.get('precompute_use_parallel', True)
     
     print("=" * 60)
     print("预计算邻接矩阵缓存")
@@ -30,6 +32,9 @@ def main(config_path="configs/gcn_fusion.yaml"):
     print(f"源语言最大长度: {max_src_len}")
     print(f"目标语言最大长度: {max_tgt_len}")
     print(f"批处理大小 (chunk_size): {precompute_chunk_size}")
+    print(f"使用多进程: {precompute_use_parallel}")
+    if precompute_use_parallel:
+        print(f"最大工作进程数: {precompute_max_workers or '自动'}")
     print("=" * 60)
     
     # 加载数据集
@@ -52,6 +57,8 @@ def main(config_path="configs/gcn_fusion.yaml"):
         max_tgt_in_len=max_tgt_len-1,
         cache_dir=cache_train_dir, 
         chunk_size=precompute_chunk_size, 
+        max_workers=precompute_max_workers,
+        use_parallel=precompute_use_parallel,
         dtype=torch.float16,
     )
     print(f"✓ 训练集缓存完成: {cache_train_dir}")
@@ -66,7 +73,9 @@ def main(config_path="configs/gcn_fusion.yaml"):
         max_src_len=max_src_len, 
         max_tgt_in_len=max_tgt_len-1,
         cache_dir=cache_valid_dir, 
-        chunk_size=precompute_chunk_size, 
+        chunk_size=precompute_chunk_size,
+        max_workers=precompute_max_workers,
+        use_parallel=precompute_use_parallel,
         dtype=torch.float16,
     )
     print(f"✓ 验证集缓存完成: {cache_valid_dir}")
