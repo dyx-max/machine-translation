@@ -86,7 +86,7 @@ def _split_long_sentence(sent: spacy.tokens.span.Span, lang: str, limit: int) ->
     return chunks
 
 
-def build_dep_adj(texts, sp=None, lang="zh", max_len=64, spacy_parse_limit=64):
+def build_dep_adj(texts, sp=None, lang="zh", max_len=64, spacy_parse_limit=64, nlp=None):
     """
     构建依存树邻接矩阵（优先软切分 + 过滤跨句依存边）
     
@@ -99,7 +99,8 @@ def build_dep_adj(texts, sp=None, lang="zh", max_len=64, spacy_parse_limit=64):
     Returns:
         [B, max_len, max_len] 邻接矩阵
     """
-    parser = _get_nlp(lang)
+    # 使用传入的nlp对象，如果没有则获取默认的
+    parser = nlp if nlp is not None else _get_nlp(lang)
     batch_adj = []
 
     for text in texts:

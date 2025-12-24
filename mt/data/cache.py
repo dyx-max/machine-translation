@@ -25,7 +25,7 @@ def _process_chunk(args):
     """处理单个chunk的辅助函数，用于多进程"""
     chunk_idx, chunk, lang, max_len, temp_dir = args
     nlp = _get_nlp(lang)
-    adj_chunk = build_dep_adj(chunk, lang=lang, max_len=max_len, nlp=nlp)
+    adj_chunk = build_dep_adj(chunk, lang=lang, max_len=max_len)
     
     # 将结果保存到临时文件
     chunk_file = os.path.join(temp_dir, f'chunk_{chunk_idx:04d}.pt')
