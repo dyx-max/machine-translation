@@ -21,6 +21,8 @@ def _chunks(lst, n):
         yield lst[i:i+n]
 
 
+import time
+
 def _process_chunk(args):
     """处理单个chunk的辅助函数，用于多进程"""
     chunk_idx, chunk, lang, max_len, temp_dir = args
@@ -29,8 +31,49 @@ def _process_chunk(args):
     
     # 将结果保存到临时文件
     chunk_file = os.path.join(temp_dir, f'chunk_{chunk_idx:04d}.pt')
-    torch.save(adj_chunk.cpu().half(), chunk_file)
-    return chunk_idx, len(chunk), chunk_file
+    temp_file = f"{chunk_file}.tmp"
+
+    max_retries = 3
+    retry_delay = 1  # 秒
+
+    for attempt in range(max_retries):
+        try:
+            # 计算邻接矩阵
+            nlp = _get_nlp(lang)
+            adj_chunk = build_dep_adj(chunk, lang=lang, max_len=max_len)
+
+            # 保存到临时文件
+            torch.save(adj_chunk.cpu().half(), temp_file)
+
+            # 原子重命名
+            if os.path.exists(chunk_file):
+                os.remove(chunk_file)
+            os.rename(temp_file, chunk_file)
+
+            # 验证文件是否完整
+            try:
+                loaded = torch.load(chunk_file, map_location='cpu')
+                if loaded.dim() != 3:  # 检查张量维度
+                    raise ValueError("Invalid tensor dimensions")
+                return chunk_idx, len(chunk), chunk_file
+            except Exception as e:
+                print(f"警告: 文件验证失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+                if os.path.exists(chunk_file):
+                    os.remove(chunk_file)
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(retry_delay * (attempt + 1))
+                continue
+
+        except Exception as e:
+            print(f"警告: 处理chunk {chunk_idx} 时出错 (尝试 {attempt + 1}/{max_retries}): {e}")
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(retry_delay * (attempt + 1))
+
+    raise RuntimeError(f"无法处理chunk {chunk_idx}，已达到最大重试次数")
 
 
 def compute_adj_parallel(texts, lang: str, max_len: int, chunk_size: int = 1000, 
@@ -95,12 +138,31 @@ def compute_adj_parallel(texts, lang: str, max_len: int, chunk_size: int = 1000,
         # 按顺序加载并合并所有chunk
         print("  合并chunk结果...")
         result = []
+        valid_chunks = 0
+        
         for chunk_file in chunk_files:
-            if chunk_file and os.path.exists(chunk_file):
-                result.append(torch.load(chunk_file, map_location='cpu'))
+            if not chunk_file or not os.path.exists(chunk_file):
+                print(f"  警告: 跳过不存在的chunk文件: {chunk_file}")
+                continue
+                
+            try:
+                # 尝试加载并验证chunk文件
+                chunk_data = torch.load(chunk_file, map_location='cpu')
+                if chunk_data.dim() != 3:  # 验证张量维度
+                    print(f"  警告: 跳过无效的chunk文件 {chunk_file} (维度错误: {chunk_data.dim()})")
+                    continue
+                    
+                result.append(chunk_data)
+                valid_chunks += 1
+                
+            except Exception as e:
+                print(f"  警告: 加载chunk文件 {chunk_file} 时出错: {e}")
+                continue
         
         if not result:
             raise RuntimeError("没有有效的chunk结果")
+            
+        print(f"  成功加载 {valid_chunks}/{len(chunk_files)} 个chunk文件")
             
         result = torch.cat(result, dim=0)
         print(f"  ✓ 完成，共 {len(texts)} 条文本，矩阵形状: {result.shape}")
@@ -113,7 +175,7 @@ def compute_adj_parallel(texts, lang: str, max_len: int, chunk_size: int = 1000,
 
 
 def compute_adj_sequential(texts, lang: str, max_len: int, chunk_size: int = 3000, 
-                          desc: str = "计算邻接矩阵") -> torch.Tensor:
+                           desc: str = "计算邻接矩阵") -> torch.Tensor:
     """
     单进程顺序计算依存邻接矩阵（兼容旧版）
     
@@ -141,7 +203,7 @@ def compute_adj_sequential(texts, lang: str, max_len: int, chunk_size: int = 300
     
     # 使用tqdm显示进度（按chunk显示，包含总数和速度信息）
     for chunk in tqdm(chunks, desc=desc, unit="chunk", total=total_chunks, 
-                     bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'):
+                      bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]'):
         with torch.no_grad():
             # 批量计算，spaCy模型已加载，不会重复加载
             adj_batch = build_dep_adj(chunk, lang=lang, max_len=max_len, nlp=nlp)  # [B, L, L]
@@ -257,7 +319,7 @@ def ensure_adj_cache(ds, src_lang: str, tgt_lang: str, max_src_len: int, max_tgt
         adj_src = adj_src.to(dtype)
     if adj_tgt_in.dtype != dtype:
         adj_tgt_in = adj_tgt_in.to(dtype)
-    
+
     # 保存到临时文件，然后原子重命名，避免写入过程中断导致损坏
     temp_dir = os.path.join(cache_dir, 'temp')
     os.makedirs(temp_dir, exist_ok=True)
@@ -270,8 +332,8 @@ def ensure_adj_cache(ds, src_lang: str, tgt_lang: str, max_src_len: int, max_tgt
         # 保存目标语言邻接矩阵
         temp_tgt = os.path.join(temp_dir, 'adj_tgt_in.pt.tmp')
         torch.save(adj_tgt_in, temp_tgt)
-        
-        # 保存元数据
+    
+    # 保存元数据
         meta = {
             'count': len(ds),
             'src_lang': src_lang,
