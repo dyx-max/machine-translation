@@ -95,7 +95,7 @@ def beam_search_decode(
             if early_stop and all(finished for _, _, _, finished, _ in beams):
                 break
 
-               # 选择得分最高的序列（优先选择已完成的）
+        # 选择得分最高的序列（优先选择已完成的）
         completed_beams = [
             (seq, raw_score, length, compute_normalized_score(raw_score, length))
             for seq, raw_score, length, finished, _ in beams if finished

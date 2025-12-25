@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 
 from mt.data.tokenizer import decode_sp
+from mt.data.dependency import build_dep_adj
 
 
 def greedy_decode(
@@ -71,7 +72,7 @@ def greedy_decode(
             _, tgt_mask, mem_mask = model.build_masks(src_ids, tgt_ids)
             
             # 标准 Transformer 解码
-                    dec_out = model.decode(tgt_ids, memory, tgt_mask, mem_mask)
+            dec_out = model.decode(tgt_ids, memory, tgt_mask, mem_mask)
             
             logits = model.generator(dec_out[:, -1:, :])  # [1,1,V]
             log_probs = F.log_softmax(logits, dim=-1)  # [1,1,V]
