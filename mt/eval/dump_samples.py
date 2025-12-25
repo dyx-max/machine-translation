@@ -55,7 +55,7 @@ def extract_attention_weights(
         src_ids: 源序列
         tgt_ids: 目标序列
         adj_src: 源语言邻接矩阵
-            layer_idx: 层索引
+        layer_idx: 层索引
         head_idx: 头索引
     
     Returns:

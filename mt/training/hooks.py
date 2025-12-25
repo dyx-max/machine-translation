@@ -82,7 +82,7 @@ def create_validation_hook(
         samples = []
         
         with torch.no_grad():
-            for src_ids, tgt_ids, _, _ in valid_loader:
+            for src_ids, tgt_ids, _ in valid_loader:
                 if count >= num_samples:
                     break
                 

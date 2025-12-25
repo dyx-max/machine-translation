@@ -239,7 +239,7 @@ def ensure_adj_cache(ds, src_lang: str, max_src_len: int,
 
     print(f"\n计算源语言 ({src_lang}) 邻接矩阵...")
     adj_src = compute_fn(src_texts, src_lang, max_src_len, desc=f"计算 {src_lang} 邻接矩阵", **compute_kwargs)
-    
+
     print(f"\n保存缓存到 {cache_dir}...")
     if adj_src.dtype != dtype:
         adj_src = adj_src.to(dtype)

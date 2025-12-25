@@ -149,7 +149,7 @@ class TransformerGCN(nn.Module):
         # 4. 输出层
         logits = self.generator(dec_out)  # [B,T,V]
         return F.log_softmax(logits, dim=-1)
-    
+
     @torch.no_grad()
     def generate(self, src: torch.Tensor, adj_src: torch.Tensor, max_len: int = 100, 
                 bos_idx: int = 2, eos_idx: int = 3):
