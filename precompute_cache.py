@@ -51,12 +51,11 @@ def main(config_path="configs/gcn_fusion.yaml"):
     print("预计算训练集邻接矩阵缓存...")
     print("=" * 60)
     cache_train_dir = os.path.join(cache_root, "train")
-    adj_src_train, adj_tgt_in_train = ensure_adj_cache(
-        ds_train, src_lang="zh", tgt_lang="en",
-        max_src_len=max_src_len, 
-        max_tgt_in_len=max_tgt_len-1,
-        cache_dir=cache_train_dir, 
-        chunk_size=precompute_chunk_size, 
+    adj_src_train = ensure_adj_cache(
+        ds_train, src_lang="zh",
+        max_src_len=max_src_len,
+        cache_dir=cache_train_dir,
+        chunk_size=precompute_chunk_size,
         max_workers=precompute_max_workers,
         use_parallel=precompute_use_parallel,
         dtype=torch.float16,
@@ -68,12 +67,11 @@ def main(config_path="configs/gcn_fusion.yaml"):
     print("预计算验证集邻接矩阵缓存...")
     print("=" * 60)
     cache_valid_dir = os.path.join(cache_root, "valid")
-    adj_src_valid, adj_tgt_in_valid = ensure_adj_cache(
-        ds_valid, src_lang="zh", tgt_lang="en",
-        max_src_len=max_src_len, 
-        max_tgt_in_len=max_tgt_len-1,
-        cache_dir=cache_valid_dir, 
-        chunk_size=precompute_chunk_size, 
+    adj_src_valid = ensure_adj_cache(
+        ds_valid, src_lang="zh",
+        max_src_len=max_src_len,
+        cache_dir=cache_valid_dir,
+        chunk_size=precompute_chunk_size,
         max_workers=precompute_max_workers,
         use_parallel=precompute_use_parallel,
         dtype=torch.float16,

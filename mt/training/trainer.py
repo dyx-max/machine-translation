@@ -60,15 +60,14 @@ class Trainer:
         total_loss = 0
         batch_iterator = tqdm(self.train_loader, desc=f"Epoch {epoch:02d}")
         
-        for batch_idx, (src_ids, tgt_ids, adj_src, adj_tgt_in) in enumerate(batch_iterator):
+        for batch_idx, (src_ids, tgt_ids, adj_src) in enumerate(batch_iterator):
             src_ids, tgt_ids = src_ids.to(self.device), tgt_ids.to(self.device)
             tgt_in, tgt_out = tgt_ids[:, :-1], tgt_ids[:, 1:]
 
             # 使用预计算的邻接矩阵，避免运行时重复构建
             adj_src = adj_src.to(self.device)
-            adj_tgt_in = adj_tgt_in.to(self.device)
 
-            log_probs = self.model(src_ids, tgt_in, adj_src, adj_tgt_in)  # [B,T,V]
+            log_probs = self.model(src_ids, tgt_in, adj_src)  # [B,T,V]
             loss = self.criterion(log_probs.reshape(-1, log_probs.size(-1)), tgt_out.reshape(-1))
 
             self.scheduler.zero_grad()
@@ -112,15 +111,14 @@ class Trainer:
         samples = []
 
         with torch.no_grad():
-            for src_ids, tgt_ids, adj_src, adj_tgt_in in self.valid_loader:
+            for src_ids, tgt_ids, adj_src in self.valid_loader:
                 src_ids, tgt_ids = src_ids.to(self.device), tgt_ids.to(self.device)
                 tgt_in, tgt_out = tgt_ids[:, :-1], tgt_ids[:, 1:]
 
                 adj_src = adj_src.to(self.device)
-                adj_tgt_in = adj_tgt_in.to(self.device)
 
                 if compute_loss:
-                    log_probs = self.model(src_ids, tgt_in, adj_src, adj_tgt_in)
+                    log_probs = self.model(src_ids, tgt_in, adj_src)
                     loss = self.criterion(log_probs.reshape(-1, log_probs.size(-1)), tgt_out.reshape(-1))
                     total_loss += loss.item()
                     count += 1

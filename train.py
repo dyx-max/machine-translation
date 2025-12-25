@@ -78,14 +78,14 @@ def main(config_path="configs/gcn_fusion.yaml"):
     print("预计算并缓存邻接矩阵...")
     cache_train_dir = os.path.join(cache_root, "train")
     cache_valid_dir = os.path.join(cache_root, "valid")
-    adj_src_train, adj_tgt_in_train = ensure_adj_cache(
-        ds_train, src_lang="zh", tgt_lang="en",
-        max_src_len=max_src_len, max_tgt_in_len=max_tgt_len-1,
+    adj_src_train = ensure_adj_cache(
+        ds_train, src_lang="zh",
+        max_src_len=max_src_len,
         cache_dir=cache_train_dir, chunk_size=precompute_chunk_size, dtype=torch.float16,
     )
-    adj_src_valid, adj_tgt_in_valid = ensure_adj_cache(
-        ds_valid, src_lang="zh", tgt_lang="en",
-        max_src_len=max_src_len, max_tgt_in_len=max_tgt_len-1,
+    adj_src_valid = ensure_adj_cache(
+        ds_valid, src_lang="zh",
+        max_src_len=max_src_len,
         cache_dir=cache_valid_dir, chunk_size=precompute_chunk_size, dtype=torch.float16,
     )
 
@@ -103,7 +103,7 @@ def main(config_path="configs/gcn_fusion.yaml"):
     print("创建数据加载器...")
     train_loader = DataLoader(
         WMTDataset(ds_train, sp_src, sp_tgt, max_src_len, max_tgt_len,
-                   adj_src_cache=adj_src_train, adj_tgt_in_cache=adj_tgt_in_train),
+                   adj_src_cache=adj_src_train),
         batch_size=batch_size,
         shuffle=True,
         collate_fn=collate_batch,
@@ -113,7 +113,7 @@ def main(config_path="configs/gcn_fusion.yaml"):
     )
     valid_loader = DataLoader(
         WMTDataset(ds_valid, sp_src, sp_tgt, max_src_len, max_tgt_len,
-                   adj_src_cache=adj_src_valid, adj_tgt_in_cache=adj_tgt_in_valid),
+                   adj_src_cache=adj_src_valid),
         batch_size=1,
         collate_fn=collate_batch,
         num_workers=max(1, dataloader_workers//2),
@@ -136,8 +136,7 @@ def main(config_path="configs/gcn_fusion.yaml"):
         max_len=max(max_src_len, max_tgt_len),
         pad_idx=model_config['pad_idx'],
         dropout=model_config['dropout'],
-        gcn_layers_src=model_config['gcn_layers_src'],
-        gcn_layers_tgt=model_config['gcn_layers_tgt'],
+        gcn_layers=model_config['gcn_layers'],
         fusion_mode=model_config['fusion_mode'],
     ).to(device)
 

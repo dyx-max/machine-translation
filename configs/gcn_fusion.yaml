@@ -4,8 +4,7 @@
 # 模型配置覆盖
 model:
   fusion_mode: "gate"  # 或 "concat"
-  gcn_layers_src: 2
-  gcn_layers_tgt: 2
+  gcn_layers: 2
 
 # 句法图配置
 dependency:

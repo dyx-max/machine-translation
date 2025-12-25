@@ -1,5 +1,9 @@
 """
-主模型：Transformer + GCN
+主模型：Transformer + GCN（严格三段式）
+1. Transformer Encoder 得到 H
+2. 用 H 作为 GCN 输入，得到 H'
+3. 融合 H 和 H' 作为 Encoder 输出
+4. Decoder 保持标准 Transformer 结构
 """
 import torch
 import torch.nn as nn
@@ -12,7 +16,7 @@ from mt.utils.masks import subsequent_mask, make_pad_attn_mask
 
 
 class TransformerGCN(nn.Module):
-    """Transformer + GCN 并行融合模型"""
+    """Transformer + GCN 严格三段式融合模型"""
     def __init__(
         self,
         d_model: int,
@@ -24,28 +28,28 @@ class TransformerGCN(nn.Module):
         max_len: int,
         pad_idx: int = 0,
         dropout: float = 0.1,
-        gcn_layers_src: int = 2,
-        gcn_layers_tgt: int = 2,
-        fusion_mode: str = "concat",  # or "gate"
+        gcn_layers: int = 2,  # 只需要一个 GCN 层数参数
+        fusion_mode: str = "gate",  # 默认使用 gate 融合
     ):
         super().__init__()
         self.pad_idx = pad_idx
         self.d_model = d_model
 
+        # 1. 词嵌入和位置编码
         self.src_embed = nn.Embedding(src_vocab_size, d_model)
         self.tgt_embed = nn.Embedding(tgt_vocab_size, d_model)
         self.pos_encoder = PositionalEncoding(d_model, max_len)
         self.dropout = nn.Dropout(dropout)
 
+        # 2. 编码器和解码器
         self.encoder = nn.ModuleList([EncoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
         self.decoder = nn.ModuleList([DecoderLayer(d_model, num_heads, d_ff, dropout) for _ in range(num_layers)])
 
-        self.src_syntax_gcn = SyntaxGCN(d_model, num_layers=gcn_layers_src, dropout=dropout)
-        self.tgt_syntax_gcn = SyntaxGCN(d_model, num_layers=gcn_layers_tgt, dropout=dropout)
-
+        # 3. GCN 和融合模块（仅用于编码器）
+        self.src_syntax_gcn = SyntaxGCN(d_model, num_layers=gcn_layers, dropout=dropout)
         self.enc_fusion = ParallelFusion(d_model, mode=fusion_mode, dropout=dropout)
-        self.dec_fusion = ParallelFusion(d_model, mode=fusion_mode, dropout=dropout)
 
+        # 4. 输出层
         self.generator = nn.Linear(d_model, tgt_vocab_size)
         
         # 初始化权重
@@ -80,79 +84,112 @@ class TransformerGCN(nn.Module):
         return src_attn_mask, tgt_attn_mask, memory_attn_mask
 
     def encode(self, src: torch.Tensor, src_attn_mask: torch.Tensor, adj_src: torch.Tensor):
-        """编码（改进版：GCN使用Transformer第一层输出，统一特征空间 + padding mask）"""
+        """
+        编码（严格三段式）
+        1. Transformer Encoder 得到 H
+        2. 用 H 作为 GCN 输入，得到 H'
+        3. 融合 H 和 H' 作为最终输出
+        """
+        # 1. 词嵌入 + 位置编码
         src_emb = self.dropout(self.pos_encoder(self.src_embed(src)))  # [B,S,d_model]
 
-        # Transformer编码
-        t_out = src_emb
-        for i, layer in enumerate(self.encoder):
-            t_out = layer(t_out, src_attn_mask)
-            # 让GCN使用Transformer第一层的输出，而不是初始embedding
-            # 这样GCN和Transformer的特征空间更匹配
-            if i == 0:
-                transformer_first_out = t_out
+        # 2. Transformer 编码得到 H
+        h = src_emb
+        for layer in self.encoder:
+            h = layer(h, src_attn_mask)  # [B,S,d_model]
 
-        # GCN处理（使用Transformer第一层输出 + padding mask）
+        # 3. GCN 处理得到 H'
         adj_src = adj_src.to(src.device)
         src_pad_mask = (src == self.pad_idx)  # [B, S]，True表示padding位置
-        # 使用Transformer第一层输出作为GCN输入，添加padding mask
-        g_out = self.src_syntax_gcn(transformer_first_out, adj_src, pad_mask=src_pad_mask)  # [B,S,d_model]
+        h_prime = self.src_syntax_gcn(h, adj_src, pad_mask=src_pad_mask)  # [B,S,d_model]
         
-        # 融合：Transformer深层输出 + GCN输出（基于Transformer第一层）
-        enc_out = self.enc_fusion(t_out, g_out)
+        # 4. 融合 H 和 H'
+        enc_out = self.enc_fusion(h, h_prime)  # [B,S,d_model]
         return enc_out
 
     def decode(self, tgt: torch.Tensor, memory: torch.Tensor, tgt_attn_mask: torch.Tensor,
-               memory_attn_mask: torch.Tensor, adj_tgt: torch.Tensor = None, use_tgt_gcn: bool = True):
+               memory_attn_mask: torch.Tensor):
         """
-        解码（改进版：GCN使用Transformer第一层输出，统一特征空间 + padding mask）
-        
-        Args:
-            tgt: 目标序列
-            memory: 编码器输出
-            tgt_attn_mask: 目标序列mask
-            memory_attn_mask: 记忆mask
-            adj_tgt: 目标语言邻接矩阵（可选，None时禁用GCN）
-            use_tgt_gcn: 是否使用target端GCN（默认True，解码时可设为False）
+        标准 Transformer 解码器
+        不包含 GCN 或融合操作
         """
+        # 1. 词嵌入 + 位置编码
         tgt_emb = self.dropout(self.pos_encoder(self.tgt_embed(tgt)))  # [B,T,d_model]
 
-        # Transformer解码
-        t_out = tgt_emb
-        for i, layer in enumerate(self.decoder):
-            t_out = layer(t_out, memory, tgt_attn_mask, memory_attn_mask)
-            # 让GCN使用Transformer第一层的输出
-            if i == 0:
-                transformer_first_out = t_out
-
-        # GCN处理（可选：解码时可禁用target端GCN）
-        if use_tgt_gcn and adj_tgt is not None:
-            adj_tgt = adj_tgt.to(tgt.device)
-            tgt_pad_mask = (tgt == self.pad_idx)  # [B, T]，True表示padding位置
-            # 使用Transformer第一层输出作为GCN输入，添加padding mask
-            g_out = self.tgt_syntax_gcn(transformer_first_out, adj_tgt, pad_mask=tgt_pad_mask)  # [B,T,d_model]
-            # 融合：Transformer深层输出 + GCN输出（基于Transformer第一层）
-            dec_out = self.dec_fusion(t_out, g_out)
-        else:
-            # 禁用target端GCN，只使用Transformer输出
-            dec_out = t_out
+        # 2. 标准 Transformer 解码
+        dec_out = tgt_emb
+        for layer in self.decoder:
+            dec_out = layer(
+                dec_out,  # [B,T,d_model]
+                memory,   # [B,S,d_model]
+                tgt_attn_mask,    # [B,1,T,T]
+                memory_attn_mask  # [B,1,1,S]
+            )
         
-        return dec_out
+        return dec_out  # [B,T,d_model]
 
-    def forward(self, src: torch.Tensor, tgt: torch.Tensor, adj_src: torch.Tensor, adj_tgt: torch.Tensor = None, use_tgt_gcn: bool = True):
+    def forward(self, src: torch.Tensor, tgt: torch.Tensor, adj_src: torch.Tensor):
         """
         前向传播
         
         Args:
-            src: 源序列
-            tgt: 目标序列
-            adj_src: 源语言邻接矩阵
-            adj_tgt: 目标语言邻接矩阵（可选）
-            use_tgt_gcn: 是否使用target端GCN（默认True，训练时使用，推理时可禁用）
+            src: 源序列 [B, S]
+            tgt: 目标序列 [B, T]
+            adj_src: 源语言邻接矩阵 [B, S, S]
         """
+        # 1. 构建各种mask
         src_attn_mask, tgt_attn_mask, memory_attn_mask = self.build_masks(src, tgt)
-        memory = self.encode(src, src_attn_mask, adj_src)
-        dec_out = self.decode(tgt, memory, tgt_attn_mask, memory_attn_mask, adj_tgt, use_tgt_gcn=use_tgt_gcn)
+        
+        # 2. 编码（包含GCN和融合）
+        memory = self.encode(src, src_attn_mask, adj_src)  # [B,S,d_model]
+        
+        # 3. 解码（标准Transformer）
+        dec_out = self.decode(tgt, memory, tgt_attn_mask, memory_attn_mask)  # [B,T,d_model]
+        
+        # 4. 输出层
         logits = self.generator(dec_out)  # [B,T,V]
         return F.log_softmax(logits, dim=-1)
-
+    
+    @torch.no_grad()
+    def generate(self, src: torch.Tensor, adj_src: torch.Tensor, max_len: int = 100, 
+                bos_idx: int = 2, eos_idx: int = 3):
+        """
+        自回归生成（推理时使用）
+        
+        Args:
+            src: 源序列 [1, S]
+            adj_src: 源语言邻接矩阵 [1, S, S]
+            max_len: 最大生成长度
+            bos_idx: 开始标记索引
+            eos_idx: 结束标记索引
+        """
+        self.eval()
+        device = next(self.parameters()).device
+        
+        # 1. 编码
+        src_attn_mask = (src == self.pad_idx).to(device)  # [1, S]
+        src_attn_mask = make_pad_attn_mask(src.size(1), src_attn_mask).to(device)  # [1,1,S,S]
+        memory = self.encode(src, src_attn_mask, adj_src)  # [1,S,d_model]
+        
+        # 2. 初始化目标序列（以BOS开始）
+        tgt = torch.ones(1, 1, dtype=torch.long, device=device) * bos_idx  # [1,1]
+        
+        # 3. 自回归生成
+        for _ in range(max_len):
+            # 构建目标mask
+            tgt_attn_mask = subsequent_mask(tgt.size(1), device=device)  # [1,T,T]
+            memory_attn_mask = make_pad_attn_mask(tgt.size(1), (src == self.pad_idx).to(device))  # [1,1,1,S]
+            
+            # 解码
+            dec_out = self.decode(tgt, memory, tgt_attn_mask, memory_attn_mask)  # [1,T,d_model]
+            next_token_logits = self.generator(dec_out[:, -1, :])  # [1,V]
+            next_token = next_token_logits.argmax(dim=-1, keepdim=True)  # [1,1]
+            
+            # 添加到序列
+            tgt = torch.cat([tgt, next_token], dim=1)  # [1,T+1]
+            
+            # 如果生成了EOS，提前结束
+            if next_token.item() == eos_idx:
+                break
+                
+        return tgt[0, 1:]  # 去掉开头的BOS

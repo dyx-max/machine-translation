@@ -297,8 +297,8 @@ model:
   num_layers: 4
   d_ff: 1024
   dropout: 0.1
-  gcn_layers_src: 2
-  gcn_layers_tgt: 2
+  gcn_layers: 2
+  gcn_layers: 2
   fusion_mode: "gate"  # "concat" 或 "gate"
   pad_idx: 0
 
@@ -320,8 +320,8 @@ device:
 # 继承base.yaml，覆盖特定项
 model:
   fusion_mode: "gate"  # 或 "concat"
-  gcn_layers_src: 2
-  gcn_layers_tgt: 2
+  gcn_layers: 2
+  gcn_layers: 2
 
 # 句法图配置
 dependency:

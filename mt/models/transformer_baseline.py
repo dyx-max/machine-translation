@@ -79,8 +79,8 @@ class TransformerBaseline(nn.Module):
         return t_out
 
     def decode(self, tgt: torch.Tensor, memory: torch.Tensor, tgt_attn_mask: torch.Tensor,
-               memory_attn_mask: torch.Tensor, adj_tgt: torch.Tensor = None):
-        """解码（adj_tgt参数保留以兼容接口，但不会使用）"""
+               memory_attn_mask: torch.Tensor):
+        """解码"""
         tgt_emb = self.dropout(self.pos_encoder(self.tgt_embed(tgt)))  # [B,T,d_model]
 
         t_out = tgt_emb
@@ -89,11 +89,11 @@ class TransformerBaseline(nn.Module):
 
         return t_out
 
-    def forward(self, src: torch.Tensor, tgt: torch.Tensor, adj_src: torch.Tensor = None, adj_tgt: torch.Tensor = None):
-        """前向传播（adj参数保留以兼容接口，但不会使用）"""
+    def forward(self, src: torch.Tensor, tgt: torch.Tensor, adj_src: torch.Tensor = None):
+        """前向传播（adj_src参数保留以兼容数据管线，但不会使用）"""
         src_attn_mask, tgt_attn_mask, memory_attn_mask = self.build_masks(src, tgt)
         memory = self.encode(src, src_attn_mask, adj_src)
-        dec_out = self.decode(tgt, memory, tgt_attn_mask, memory_attn_mask, adj_tgt)
+        dec_out = self.decode(tgt, memory, tgt_attn_mask, memory_attn_mask)
         logits = self.generator(dec_out)  # [B,T,V]
         return F.log_softmax(logits, dim=-1)
 

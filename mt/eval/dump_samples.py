@@ -43,7 +43,7 @@ def extract_attention_weights(
     src_ids: torch.Tensor,
     tgt_ids: torch.Tensor,
     adj_src: torch.Tensor,
-    adj_tgt: torch.Tensor,
+
     layer_idx: int = 0,
     head_idx: int = 0
 ) -> Optional[torch.Tensor]:
@@ -55,8 +55,7 @@ def extract_attention_weights(
         src_ids: 源序列
         tgt_ids: 目标序列
         adj_src: 源语言邻接矩阵
-        adj_tgt: 目标语言邻接矩阵
-        layer_idx: 层索引
+            layer_idx: 层索引
         head_idx: 头索引
     
     Returns:

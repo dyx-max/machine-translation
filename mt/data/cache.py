@@ -184,19 +184,18 @@ def compute_adj_sequential(texts, lang: str, max_len: int, chunk_size: int = 300
     return result
 
 
-def ensure_adj_cache(ds, src_lang: str, tgt_lang: str, max_src_len: int, max_tgt_in_len: int,
+def ensure_adj_cache(ds, src_lang: str, max_src_len: int,
                      cache_dir: str, chunk_size: int = 3000, max_workers: int = None,
                      dtype: torch.dtype = torch.float16, force_recompute: bool = False,
-                     use_parallel: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
+                     use_parallel: bool = True) -> torch.Tensor:
     """
-    生成或加载邻接矩阵缓存（支持多进程并行处理）
+    生成或加载源语言邻接矩阵缓存（支持多进程并行处理）
     """
     os.makedirs(cache_dir, exist_ok=True)
     f_src = os.path.join(cache_dir, 'adj_src.pt')
-    f_tgt = os.path.join(cache_dir, 'adj_tgt_in.pt')
     f_meta = os.path.join(cache_dir, 'meta.json')
 
-    if not force_recompute and os.path.exists(f_src) and os.path.exists(f_tgt):
+    if not force_recompute and os.path.exists(f_src):
         cache_valid = False
         if os.path.exists(f_meta):
             try:
@@ -221,13 +220,11 @@ def ensure_adj_cache(ds, src_lang: str, tgt_lang: str, max_src_len: int, max_tgt
         if cache_valid:
             print(f"加载已存在的缓存: {cache_dir} (大小: {len(ds)})")
             adj_src = torch.load(f_src, map_location='cpu')
-            adj_tgt_in = torch.load(f_tgt, map_location='cpu')
-            return adj_src, adj_tgt_in
+            return adj_src
         else:
             print(f"缓存无效，将重新计算...")
 
     src_texts = [ex['translation'][src_lang] for ex in ds]
-    tgt_texts = [ex['translation'][tgt_lang] for ex in ds]
 
     compute_fn = compute_adj_parallel if use_parallel else compute_adj_sequential
     compute_kwargs = {'chunk_size': chunk_size}
@@ -243,14 +240,9 @@ def ensure_adj_cache(ds, src_lang: str, tgt_lang: str, max_src_len: int, max_tgt
     print(f"\n计算源语言 ({src_lang}) 邻接矩阵...")
     adj_src = compute_fn(src_texts, src_lang, max_src_len, desc=f"计算 {src_lang} 邻接矩阵", **compute_kwargs)
     
-    print(f"\n计算目标语言 ({tgt_lang}) 邻接矩阵...")
-    adj_tgt_in = compute_fn(tgt_texts, tgt_lang, max_tgt_in_len, desc=f"计算 {tgt_lang} 邻接矩阵", **compute_kwargs)
-
     print(f"\n保存缓存到 {cache_dir}...")
     if adj_src.dtype != dtype:
         adj_src = adj_src.to(dtype)
-    if adj_tgt_in.dtype != dtype:
-        adj_tgt_in = adj_tgt_in.to(dtype)
 
     temp_dir = os.path.join(cache_dir, 'temp')
     os.makedirs(temp_dir, exist_ok=True)
@@ -258,15 +250,11 @@ def ensure_adj_cache(ds, src_lang: str, tgt_lang: str, max_src_len: int, max_tgt
         temp_src = os.path.join(temp_dir, 'adj_src.pt.tmp')
         torch.save(adj_src, temp_src, _use_new_zipfile_serialization=False)
 
-        temp_tgt = os.path.join(temp_dir, 'adj_tgt_in.pt.tmp')
-        torch.save(adj_tgt_in, temp_tgt, _use_new_zipfile_serialization=False)
 
         meta = {
             'count': len(ds),
             'src_lang': src_lang,
-            'tgt_lang': tgt_lang,
             'max_src_len': max_src_len,
-            'max_tgt_in_len': max_tgt_in_len,
             'dtype': str(dtype),
             'chunk_size': chunk_size,
             'use_parallel': use_parallel,
@@ -277,7 +265,6 @@ def ensure_adj_cache(ds, src_lang: str, tgt_lang: str, max_src_len: int, max_tgt
 
         for src, dst in [
             (temp_src, f_src),
-            (temp_tgt, f_tgt),
             (os.path.join(temp_dir, 'meta.json.tmp'), f_meta)
         ]:
             if os.path.exists(dst):
@@ -288,4 +275,4 @@ def ensure_adj_cache(ds, src_lang: str, tgt_lang: str, max_src_len: int, max_tgt
             shutil.rmtree(temp_dir, ignore_errors=True)
 
     print(f"✓ 缓存保存完成: {cache_dir}")
-    return adj_src, adj_tgt_in
+    return adj_src

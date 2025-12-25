@@ -18,7 +18,7 @@ class DummyModel(nn.Module):
     def encode(self, src, src_attn_mask, adj_src=None):
         return self.embedding(src)
     
-    def decode(self, tgt, memory, tgt_attn_mask, memory_attn_mask, adj_tgt=None):
+    def decode(self, tgt, memory, tgt_attn_mask, memory_attn_mask):
         return self.embedding(tgt)
     
     def generator(self, x):

@@ -21,8 +21,7 @@ def beam_search_decode(
     early_stop=True,
     min_length=10,            # 新增：最小生成长度
     ngram_size=3,             # 新增：重复惩罚的 n-gram 大小
-    debug=False,
-    disable_tgt_gcn=True
+    debug=False
 ):
     model.eval()
     with torch.no_grad():
