@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from typing import List, Tuple
 
 from mt.data.tokenizer import decode_sp
-from mt.data.dependency import build_dep_adj
+from mt.data.dependency import build_dep_edges, edges_to_adjacency
 
 
 def beam_search_decode(
@@ -28,15 +28,23 @@ def beam_search_decode(
         src_ids = src_ids.unsqueeze(0).to(device) if src_ids.dim() == 1 else src_ids.to(device)
 
         # 构建源端邻接矩阵（如果模型需要）
+        # 重要：与训练 pipeline 保持一致，这里构建的是 0/1 邻接（含自环）且不做归一化；
+        # 归一化在模型内部完成。
         needs_adj_src = hasattr(model, 'src_syntax_gcn')
         if needs_adj_src:
             try:
-                adj_src = build_dep_adj(
-                    [decode_sp(sp_src, src_ids[0].cpu().tolist())],
-                    lang="zh", max_len=src_ids.size(1)
-                ).to(device)
-            except:
-                adj_src = torch.eye(src_ids.size(1), device=device, dtype=torch.float32)
+                text = decode_sp(sp_src, src_ids[0].cpu().tolist())
+                edges = build_dep_edges([text], lang="zh", max_len=src_ids.size(1))[0]
+                adj_src = edges_to_adjacency(
+                    [edges],
+                    max_len=src_ids.size(1),
+                    add_self_loops=True,
+                    normalize=None,
+                    dtype=torch.float32,
+                    device=device,
+                )
+            except Exception:
+                adj_src = torch.eye(src_ids.size(1), device=device, dtype=torch.float32).unsqueeze(0)
         else:
             adj_src = None
 
