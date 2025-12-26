@@ -1,5 +1,5 @@
 """
-依存分析相关功能（V6版：修复长句切分死循环）
+依存分析相关功能（V7版：支持边列表 + GCN内部归一化）
 """
 import torch
 import spacy
@@ -12,7 +12,7 @@ _nlp_en = None
 # --- 软切分配置 ---
 SOFT_SPLIT_CONJUNCTIONS = {
     "zh": {"和", "并且", "但是", "因为", "所以", "如果", "虽然", "同时", "以及", "或", "或者"},
-    "en": {"and", "but", "because", "although", "while", "which", "that", "or", "if", "so", "when"}
+    "en": {"and", "but", "because", "although", "while", "which", "that", "or", "if", "so", "when"},
 }
 
 
@@ -32,6 +32,10 @@ def _get_nlp(lang):
                 _nlp_en.add_pipe("sentencizer")
         return _nlp_en
 
+
+# ----------------------
+#   句子软切分辅助函数
+# ----------------------
 
 def _find_soft_split_point(tokens: List[spacy.tokens.Token], split_point: int, lang: str, window: int = 5) -> int:
     """在切分点附近寻找最佳的软切分位置（优先连词，其次标点）"""
@@ -91,17 +95,34 @@ def _split_long_sentence(sent: spacy.tokens.span.Span, lang: str, limit: int) ->
     return chunks
 
 
-def build_dep_adj(texts, sp=None, lang="zh", max_len=64, spacy_parse_limit=64, nlp=None):
-    """
-    构建依存树邻接矩阵（优先软切分 + 过滤跨句依存边）
+# ----------------------
+#   依存边构建：边列表版本
+# ----------------------
+
+def build_dep_edges(texts, sp=None, lang: str = "zh", max_len: int = 64, spacy_parse_limit: int = 64, nlp=None):
+    """构建依存树边列表（不在此处做归一化）。
+
+    Args:
+        texts: 文本列表
+        sp:    保留旧接口参数（未使用）
+        lang:  语言（"zh" 或 "en"）
+        max_len: 对齐到的最大长度（用于裁剪 token 索引）
+        spacy_parse_limit: 单句解析长度上限（结合软切分）
+        nlp: 可选的 spaCy nlp 对象（用于多进程下的共享）
+
+    Returns:
+        List[Tensor]: 长度为 len(texts) 的列表，每个元素为 [num_edges, 2] 的 long tensor。
+                      其中 num_edges 可能为 0（例如空句）。
     """
     parser = nlp if nlp is not None else _get_nlp(lang)
-    batch_adj = []
+    batch_edges: List[torch.Tensor] = []
 
     for text in texts:
         doc = parser(text)
         num_tokens = len(doc)
-        adj = torch.zeros(num_tokens, num_tokens, dtype=torch.float32)
+
+        # 收集 (i, j) 边对
+        edge_list = []
 
         for sent in doc.sents:
             if len(sent) > spacy_parse_limit:
@@ -115,28 +136,61 @@ def build_dep_adj(texts, sp=None, lang="zh", max_len=64, spacy_parse_limit=64, n
                             i = chunk_start + token.i
                             j = chunk_start + token.head.i
                             if i < num_tokens and j < num_tokens:
-                                adj[i, j] = 1.0
-                                adj[j, i] = 1.0
+                                edge_list.append((i, j))
+                                edge_list.append((j, i))
             else:
                 for token in sent:
                     if token.sent == token.head.sent:
                         i, j = token.i, token.head.i
-                        adj[i, j] = 1.0
-                        adj[j, i] = 1.0
+                        edge_list.append((i, j))
+                        edge_list.append((j, i))
 
-        I = torch.eye(num_tokens, dtype=torch.float32)
-        adj = adj + I
-
-        final_adj = torch.zeros(max_len, max_len, dtype=torch.float32)
+        # 加自环：这里先只生成边，是否添加自环可以在后续转换为邻接矩阵时处理
+        # 但为了与旧逻辑一致，我们可以在此处为有效 token 添加自环
         effective_len = min(num_tokens, max_len)
-        final_adj[:effective_len, :effective_len] = adj[:effective_len, :effective_len]
+        for i in range(effective_len):
+            edge_list.append((i, i))
 
-        deg = final_adj.sum(dim=-1)
-        deg_inv_sqrt = deg.pow(-0.5)
-        deg_inv_sqrt[deg_inv_sqrt == float('inf')] = 0
-        D_inv_sqrt = torch.diag(deg_inv_sqrt)
-        final_adj = D_inv_sqrt @ final_adj @ D_inv_sqrt
+        if edge_list:
+            edges = torch.tensor(edge_list, dtype=torch.long)
+        else:
+            edges = torch.empty(0, 2, dtype=torch.long)
 
-        batch_adj.append(final_adj)
+        # 裁剪到 max_len 以内（主要是安全保护，正常 edge 已在上面控制）
+        if edges.numel() > 0:
+            edges = edges.clamp(0, max_len - 1)
+
+        batch_edges.append(edges)
+
+    return batch_edges
+
+
+# ----------------------
+#   旧接口：仍保留 build_dep_adj 以兼容旧代码
+# ----------------------
+
+def build_dep_adj(texts, sp=None, lang="zh", max_len=64, spacy_parse_limit=64, nlp=None):
+    """兼容旧接口的邻接矩阵构建函数。
+
+    现在内部通过 `build_dep_edges` 先生成边列表，再转换为邻接矩阵，
+    但保持了原先在预处理阶段做度归一化的行为，以兼容老缓存/老流程。
+
+    后续新 pipeline 建议直接使用 `build_dep_edges` + 运行时归一化。
+    """
+    from mt.data.cache import edges_to_adjacency  # 延迟导入避免循环
+
+    batch_edges = build_dep_edges(
+        texts,
+        sp=sp,
+        lang=lang,
+        max_len=max_len,
+        spacy_parse_limit=spacy_parse_limit,
+        nlp=nlp,
+    )
+
+    batch_adj = []
+    for edges in batch_edges:
+        adj = edges_to_adjacency(edges, max_len=max_len, normalized=True)
+        batch_adj.append(adj)
 
     return torch.stack(batch_adj)
