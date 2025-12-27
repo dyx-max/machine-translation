@@ -113,19 +113,14 @@ def collate_batch(
 
     g0 = graph[0]
 
-    # dense adjacency
-    if g0.dim() == 2:
-        return src_t, tgt_t, torch.stack([g.to(dtype=torch.float32) for g in graph])
-
-    # edges list
+    # case 1) edges list: [E,2]
+    # 必须在 "dense adjacency" 判断之前处理，否则会误判为 [L,L] 并 stack 失败。
     if g0.dim() == 2 and g0.size(-1) == 2:
-        # (这个分支理论不会进入，因为 dim==2 已提前 return；保留以防未来变更)
-        pass
-
-    # edges: [E,2]
-    if edges_to_adj:
+        if not edges_to_adj:
+            raise ValueError("edges_to_adj=False is not supported in current collate")
         if max_src_len is None:
             raise ValueError("max_src_len is required when edges_to_adj=True")
+
         edges_list = list(graph)
         adj = edges_to_adjacency(
             edges_list,
@@ -136,6 +131,8 @@ def collate_batch(
         )
         return src_t, tgt_t, adj
 
-    # 不转：返回 list 形式会破坏 DataLoader 默认 stack 语义，所以这里返回 padded 的 ragged
-    # 但当前训练管道不需要该模式。
-    raise ValueError("edges_to_adj=False is not supported in current collate")
+    # case 2) dense adjacency: [L,L]
+    if g0.dim() == 2:
+        return src_t, tgt_t, torch.stack([g.to(dtype=torch.float32) for g in graph])
+
+    raise ValueError(f"Unknown graph tensor shape in batch: {tuple(g0.shape)}")
