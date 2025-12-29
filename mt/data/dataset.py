@@ -128,6 +128,7 @@ def collate_batch(
             add_self_loops=True,
             normalize=None,  # 归一化移到模型内部
             dtype=torch.float32,
+            directed=True,
         )
         return src_t, tgt_t, adj
 

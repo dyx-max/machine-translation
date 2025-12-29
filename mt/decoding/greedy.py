@@ -58,6 +58,7 @@ def greedy_decode(
                     normalize=None,
                     dtype=torch.float32,
                     device=device,
+                    directed=True,
                 )
             except Exception:
                 adj_src = torch.eye(src_ids.size(1), device=device, dtype=torch.float32).unsqueeze(0)
